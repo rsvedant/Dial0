@@ -6,6 +6,7 @@ import { ChatInterface } from "@/components/chat-interface"
 import { Homepage } from "@/components/homepage"
 import { Button } from "@/components/ui/button"
 import { Menu } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 export interface Issue {
   id: string
@@ -111,7 +112,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-background ios-no-bounce">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/20 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -121,7 +122,7 @@ export default function HomePage() {
       <div
         className={`
         fixed lg:static inset-y-0 left-0 z-50 w-64 
-        transform transition-transform duration-300 ease-in-out lg:transform-none
+        transform ios-transition lg:transform-none
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
       `}
       >
@@ -137,25 +138,27 @@ export default function HomePage() {
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile header */}
-        <div className="lg:hidden fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-3 py-2 border-b border-border bg-background/95 backdrop-blur-sm h-12">
+        {/* <div className="lg:hidden fixed top-0 left-0 right-0 z-30 flex items-center justify-between safe-area border-b border-border bg-background/95 backdrop-blur-sm ios-no-bounce ios-mobile-header">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setSidebarOpen(true)}
-            className="animate-scale-in h-8 w-8 p-0"
+            className="animate-scale-in h-12 w-12 p-0 ios-button icon-only large"
           >
-            <Menu className="h-4 w-4" />
+            <Menu className="h-6 w-6" />
           </Button>
-          <h1 className="font-semibold text-sm">Issues</h1>
-          <div className="w-8" /> {/* Spacer for centering */}
-        </div>
+          <h1 className="font-semibold text-lg">Issues</h1>
+          <div className="w-12" /> 
+        </div> */}
 
         {/* Content area */}
-        <div className="flex-1 animate-fade-in-up pt-12 lg:pt-0">
+        <div className="flex-1 animate-fade-in-up pt-16 lg:pt-0 ios-scroll">
           {selectedIssue ? (
-            <ChatInterface issue={selectedIssue} onUpdateIssue={updateIssue} />
+            <ChatInterface issue={selectedIssue} onUpdateIssue={updateIssue} onOpenMenu={() => setSidebarOpen(true)} />
           ) : (
-            <Homepage onCreateIssue={createNewIssue} issueStats={issueStats} />
+            <div className="pt-0">
+              <Homepage onCreateIssue={createNewIssue} issueStats={issueStats} onOpenMenu={() => setSidebarOpen(true)} />
+            </div>
           )}
         </div>
       </div>

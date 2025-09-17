@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { X, MessageCircle, Clock, CheckCircle2, User, Settings, Home } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { IssueIcon } from "@/components/issue-icon"
 
 interface IssuesSidebarProps {
   issues: Issue[]
@@ -41,121 +42,121 @@ export function IssuesSidebar({
   onCloseSidebar,
 }: IssuesSidebarProps) {
   return (
-    <div className="h-full bg-sidebar/95 backdrop-blur-xl border-r border-sidebar-border flex flex-col animate-slide-in-left">
-      {/* Header */}
-      <div className="p-4 border-b border-sidebar-border">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <MessageCircle className="h-5 w-5 text-sidebar-foreground" />
-            <h1 className="text-lg font-bold text-sidebar-foreground tracking-tight">Issues</h1>
+    <div className="h-full ios-sidebar flex flex-col animate-slide-in-left ios-no-bounce">
+      {/* iOS-style Header */}
+      <div className="safe-top bg-sidebar/95 backdrop-blur-xl border-b border-sidebar-border/50">
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                <MessageCircle className="h-4 w-4 text-primary-foreground" />
+              </div>
+              <h1 className="text-lg font-semibold text-sidebar-foreground">Issues</h1>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="sm" className="h-12 w-12 p-0 ios-button icon-only large">
+                <User className="h-8 w-8" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onCloseSidebar} className="lg:hidden ios-button icon-only large h-12 w-12 p-0">
+                <X className="h-6 w-6" />
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 modern-hover">
-              <User className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onCloseSidebar} className="lg:hidden modern-hover h-8 w-8 p-0">
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+          
+          {/* iOS-style Home Button */}
+          <button
+            onClick={onGoHome}
+            className="w-full flex items-center gap-3 px-4 py-3 bg-sidebar-accent/20 hover:bg-sidebar-accent/30 rounded-xl ios-transition ios-button min-h-[44px]"
+          >
+            <Home className="h-5 w-5 text-sidebar-foreground" />
+            <span className="text-sm font-medium text-sidebar-foreground">Home</span>
+          </button>
         </div>
-        <Button
-          onClick={onGoHome}
-          variant="outline"
-          className="w-full h-9 text-sm font-medium modern-hover animate-scale-in shadow-sm bg-transparent rounded-none"
-        >
-          <Home className="h-4 w-4 mr-2" />
-          Home
-        </Button>
       </div>
 
-      {/* Issues list */}
-      <ScrollArea className="flex-1">
-        <div className="p-0 space-y-0">
-          {issues.map((issue, index) => {
-            const StatusIcon = statusConfig[issue.status].icon
-            const isSelected = issue.id === selectedIssueId
+      {/* iOS-style Issues List */}
+      <ScrollArea className="flex-1 ios-scroll">
+        <div className="px-4 py-2">
+          <div className="space-y-1">
+            {issues.map((issue, index) => {
+              const StatusIcon = statusConfig[issue.status].icon
+              const isSelected = issue.id === selectedIssueId
 
-            return (
-              <div
-                key={issue.id}
-                className={cn(
-                  "p-3 cursor-pointer transition-all duration-300 modern-hover border-b border-sidebar-border/30",
-                  "hover:bg-sidebar-accent/5 animate-fade-in-up",
-                  isSelected &&
-                    "bg-sidebar-primary text-sidebar-primary-foreground border-sidebar-primary/20 shadow-sm",
-                )}
-                style={{ animationDelay: `${index * 0.05}s` }}
-                onClick={() => {
-                  onSelectIssue(issue.id)
-                  onCloseSidebar()
-                }}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-start gap-2 flex-1 min-w-0">
-                    <StatusIcon className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                    <h3
-                      className={cn(
-                        "font-medium text-sm line-clamp-2 leading-tight",
-                        isSelected ? "text-sidebar-primary-foreground" : "text-sidebar-foreground",
+              return (
+                <div
+                  key={issue.id}
+                  className={cn(
+                    "group relative ios-list-item p-3 cursor-pointer ios-transition ios-button",
+                    "animate-fade-in-up",
+                    isSelected && "bg-primary/10 border border-primary/20",
+                  )}
+                  style={{ animationDelay: `${index * 0.05}s` }}
+                  onClick={() => {
+                    onSelectIssue(issue.id)
+                    onCloseSidebar()
+                  }}
+                >
+                  {/* iOS-style list item */}
+                  <div className="flex items-start gap-3">
+                    {/* Issue icon */}
+                    <IssueIcon issueId={issue.id} size="sm" />
+                    
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between mb-1">
+                        <h3 className={cn(
+                          "font-medium text-sm leading-tight line-clamp-2",
+                          isSelected ? "text-primary" : "text-sidebar-foreground"
+                        )}>
+                          {issue.title}
+                        </h3>
+                        
+                        {/* Status badge */}
+                        <div className={cn(
+                          "px-2 py-0.5 rounded-full text-xs font-medium ml-2 flex-shrink-0",
+                          issue.status === "open" && "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+                          issue.status === "in-progress" && "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+                          issue.status === "resolved" && "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                        )}>
+                          {statusConfig[issue.status].label}
+                        </div>
+                      </div>
+                      
+                      {/* Metadata */}
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        <span>{issue.createdAt.toLocaleDateString()}</span>
+                        {issue.messages.length > 0 && (
+                          <>
+                            <span>•</span>
+                            <span>{issue.messages.length} messages</span>
+                          </>
+                        )}
+                      </div>
+                      
+                      {/* Last message preview */}
+                      {issue.messages.length > 0 && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                          {issue.messages[issue.messages.length - 1].content}
+                        </p>
                       )}
-                    >
-                      {issue.title}
-                    </h3>
+                    </div>
                   </div>
                 </div>
-
-                <div className="flex items-center justify-between mb-1">
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-xs px-2 py-0.5 flex items-center gap-1 font-medium rounded-md",
-                      statusConfig[issue.status].color,
-                    )}
-                  >
-                    <StatusIcon className="h-3 w-3" />
-                    {statusConfig[issue.status].label}
-                  </Badge>
-
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    <span
-                      className={cn(
-                        "text-xs",
-                        isSelected ? "text-sidebar-primary-foreground/70" : "text-muted-foreground",
-                      )}
-                    >
-                      {issue.createdAt.toLocaleDateString()}
-                    </span>
-                  </div>
-                </div>
-
-                {issue.messages.length > 0 && (
-                  <div className="flex items-start gap-2 mt-2">
-                    <MessageCircle className="h-3 w-3 mt-0.5 flex-shrink-0 opacity-60" />
-                    <p
-                      className={cn(
-                        "text-xs line-clamp-1 leading-relaxed flex-1",
-                        isSelected ? "text-sidebar-primary-foreground/80" : "text-muted-foreground",
-                      )}
-                    >
-                      {issue.messages[issue.messages.length - 1].content}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       </ScrollArea>
 
-      <div className="mt-auto border-t border-sidebar-border bg-sidebar/50">
-        <Button
-          variant="ghost"
-          className="w-full justify-start h-12 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent/10 modern-hover rounded-none border-b border-sidebar-border/30"
-        >
-          <Settings className="h-4 w-4 mr-3" />
-          Settings
-        </Button>
+      {/* iOS-style Bottom Section */}
+      <div className="mt-auto safe-bottom bg-sidebar/95 backdrop-blur-xl border-t border-sidebar-border/50">
+        <div className="px-4 py-3">
+          <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-sidebar-accent/10 rounded-xl ios-transition ios-button min-h-[44px]">
+            <Settings className="h-5 w-5 text-sidebar-foreground" />
+            <span className="text-sm font-medium text-sidebar-foreground">Settings</span>
+          </button>
+        </div>
       </div>
     </div>
   )

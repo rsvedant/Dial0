@@ -16,18 +16,23 @@ import {
   CheckCircle2,
   MessageCircle,
   Calendar,
-  Hash,
   ChevronDown,
   ChevronUp,
   FileText,
   CheckCircle,
   Info,
+  Sparkles,
+  Menu,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useChat } from "@/hooks/use-chat"
+import { TimelineIndicator } from "@/components/timeline-indicator"
+import { IssueIcon } from "@/components/issue-icon"
 
 interface ChatInterfaceProps {
   issue: Issue
   onUpdateIssue: (issue: Issue) => void
+  onOpenMenu: () => void
 }
 
 interface ExtendedMessage extends Message {
@@ -74,42 +79,55 @@ const messageTypeConfig = {
   },
 }
 
-export function ChatInterface({ issue, onUpdateIssue }: ChatInterfaceProps) {
+export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfaceProps) {
   const [newMessage, setNewMessage] = useState("")
-  const [isTyping, setIsTyping] = useState(false)
   const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(new Set())
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const enhancedMessages: ExtendedMessage[] = [
+  // Use the intelligent chat hook
+  const { messages: chatMessages, isLoading, isIssueComplete, sendMessage: sendChatMessage } = useChat({
+    issueId: issue.id,
+    onIssueComplete: (issueDetails) => {
+      console.log('Issue complete:', issueDetails)
+      // Update issue status to resolved when complete
+      const updatedIssue = {
+        ...issue,
+        status: "resolved" as const,
+        messages: [
+          ...issue.messages,
+          ...chatMessages.map(msg => ({
+            id: msg.id,
+            content: msg.content,
+            sender: msg.sender,
+            timestamp: msg.timestamp
+          }))
+        ]
+      }
+      onUpdateIssue(updatedIssue)
+    }
+  })
+
+  // Combine original messages with chat messages
+  const allMessages: ExtendedMessage[] = [
     ...issue.messages.map((msg) => ({ ...msg, type: "text" as const })),
-    {
-      id: "transcript-1",
-      content: "Previous conversation summary available",
-      sender: "system" as const,
-      timestamp: new Date(Date.now() - 86400000),
-      type: "transcript" as const,
-      transcript: [
-        { user: "I'm having trouble with login", system: "Let me help you troubleshoot the login issue." },
-        { user: "The password reset isn't working", system: "I'll check the password reset functionality for you." },
-        { user: "Still not working", system: "Let me escalate this to our technical team." },
-      ],
-    },
-    {
-      id: "status-1",
-      content: "Issue status updated to In Progress",
-      sender: "system" as const,
-      timestamp: new Date(Date.now() - 43200000),
-      type: "status" as const,
-    },
-    {
-      id: "info-1",
-      content: "Tip: You can attach screenshots by dragging and dropping files into the chat",
-      sender: "system" as const,
-      timestamp: new Date(Date.now() - 21600000),
-      type: "info" as const,
-    },
+    ...chatMessages.map((msg) => ({
+      ...msg,
+      type: msg.type || "text" as const
+    }))
   ].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+
+  // Add welcome message if no chat messages yet
+  const enhancedMessages: ExtendedMessage[] = chatMessages.length === 0 ? [
+    ...allMessages,
+    {
+      id: "welcome",
+      content: "Hi! I'm here to help you with your issue. Could you please describe what problem you're experiencing?",
+      sender: "system" as const,
+      timestamp: new Date(),
+      type: "text" as const,
+    }
+  ] : allMessages
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -117,7 +135,7 @@ export function ChatInterface({ issue, onUpdateIssue }: ChatInterfaceProps) {
 
   useEffect(() => {
     scrollToBottom()
-  }, [issue.messages])
+  }, [enhancedMessages])
 
   const toggleTranscript = (messageId: string) => {
     setExpandedTranscripts((prev) => {
@@ -131,95 +149,57 @@ export function ChatInterface({ issue, onUpdateIssue }: ChatInterfaceProps) {
     })
   }
 
-  const sendMessage = async () => {
-    if (!newMessage.trim()) return
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || isLoading) return
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content: newMessage,
-      sender: "user",
-      timestamp: new Date(),
-    }
-
-    const updatedIssue = {
-      ...issue,
-      messages: [...issue.messages, userMessage],
-    }
-
-    onUpdateIssue(updatedIssue)
+    const messageContent = newMessage
     setNewMessage("")
-    setIsTyping(true)
-
-    // Simulate system response
-    setTimeout(() => {
-      const systemMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content:
-          "Thank you for your message. I'm analyzing your issue and will provide assistance shortly. Is there any additional information you can provide?",
-        sender: "system",
-        timestamp: new Date(),
-      }
-
-      const finalIssue = {
-        ...updatedIssue,
-        messages: [...updatedIssue.messages, systemMessage],
-        status: updatedIssue.status === "open" ? ("in-progress" as const) : updatedIssue.status,
-      }
-
-      onUpdateIssue(finalIssue)
-      setIsTyping(false)
-    }, 1500)
+    
+    // Send to intelligent chat system
+    await sendChatMessage(messageContent)
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      sendMessage()
+      handleSendMessage()
     }
   }
 
   const StatusIcon = statusConfig[issue.status].icon
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      <div className="fixed top-0 right-0 left-0 lg:left-64 z-20 px-4 py-3 border-b border-border glass-effect animate-slide-down bg-background/95 backdrop-blur-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Hash className="h-3.5 w-3.5" />
-              <span className="font-mono">#{issue.id}</span>
-            </div>
-            <div className="h-4 w-px bg-border" />
-            <h2 className="text-sm font-semibold text-foreground line-clamp-1 flex-1">{issue.title}</h2>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <Calendar className="h-3.5 w-3.5" />
+    <div className="flex flex-col h-full bg-background ios-no-bounce">
+      <div className="fixed top-0 right-0 left-0 lg:left-64 z-20 safe-area border-b border-border glass-effect animate-slide-down bg-background/95 backdrop-blur-sm ios-no-bounce mt-[-18]">
+        <div className="px-4 h-18">
+          {/* Top row - Issue info and icon */}
+          <div className="flex items-center gap-3 justify-between mb-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onOpenMenu}
+              className="lg:hidden h-20 ml-[-20] scale-150 p-0 ios-button icon-only large"
+            >
+              <Menu className="h-6 w-6" />
+            </Button>
+            <IssueIcon issueId={issue.id} size="md" />
+            <div className="flex-1 min-w-0">
+              <h2 className="text-base font-semibold text-foreground line-clamp-1 mb-1">{issue.title}</h2>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="font-mono">#{issue.id}</span>
+                <span>•</span>
                 <span>{issue.createdAt.toLocaleDateString()}</span>
               </div>
-              <div className="flex items-center gap-1">
-                <MessageCircle className="h-3.5 w-3.5" />
-                <span>{issue.messages.length}</span>
-              </div>
             </div>
-
-            <Badge
-              variant="outline"
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full animate-scale-in",
-                statusConfig[issue.status].color,
-              )}
-            >
-              <StatusIcon className="h-3 w-3" />
-              {statusConfig[issue.status].label}
-            </Badge>
           </div>
         </div>
+        <div className="flex items-center justify-between w-full px-3 border-t border-border pt-3 h-8">
+            <TimelineIndicator status={issue.status} issueType={issue.id} />
+          </div>
       </div>
+      
 
-      <ScrollArea className="flex-1 p-4 pt-20" ref={scrollAreaRef}>
+      <ScrollArea className="flex-1 p-4 pt-24 ios-scroll scroll-container" ref={scrollAreaRef}>
         <div className="space-y-4 max-w-4xl mx-auto">
           {enhancedMessages.map((message, index) => {
             const isUser = message.sender === "user"
@@ -233,32 +213,14 @@ export function ChatInterface({ issue, onUpdateIssue }: ChatInterfaceProps) {
                 className={cn("flex gap-3 animate-fade-in-up", isUser ? "justify-end" : "justify-start")}
                 style={{ animationDelay: `${index * 0.05}s` }}
               >
-                {!isUser && (
-                  <div
-                    className={cn(
-                      "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center animate-scale-in shadow-sm",
-                      message.type === "system"
-                        ? "bg-blue-500"
-                        : message.type === "transcript"
-                          ? "bg-amber-500"
-                          : message.type === "status"
-                            ? "bg-green-500"
-                            : message.type === "info"
-                              ? "bg-purple-500"
-                              : "bg-primary",
-                    )}
-                  >
-                    <MessageIcon className="h-4 w-4 text-white" />
-                  </div>
-                )}
 
-                <div className={cn("max-w-[80%] transition-all duration-300", isUser && "ml-auto")}>
+                <div className={cn("max-w-[75%] transition-all duration-300", isUser && "ml-auto")}>
                   <div
                     className={cn(
-                      "rounded-2xl px-4 py-3 shadow-sm border transition-all duration-300 hover:shadow-md",
+                      "rounded-3xl px-6 py-4 transition-all duration-300",
                       isUser
-                        ? "bg-primary text-primary-foreground border-primary/20"
-                        : cn(messageConfig.bgClass, messageConfig.borderClass, "text-card-foreground"),
+                        ? "bg-primary text-primary-foreground liquid-glass-button"
+                        : "liquid-glass-card text-card-foreground",
                     )}
                   >
                     {message.type === "transcript" ? (
@@ -277,7 +239,7 @@ export function ChatInterface({ issue, onUpdateIssue }: ChatInterfaceProps) {
 
                         {isExpanded && message.transcript && (
                           <div className="mt-3 space-y-2 border-t border-amber-200 dark:border-amber-800 pt-3">
-                            {message.transcript.map((exchange, idx) => (
+                            {message.transcript?.map((exchange, idx) => (
                               <div key={idx} className="space-y-1">
                                 <div className="flex items-start gap-2">
                                   <User className="h-3 w-3 mt-1 text-muted-foreground" />
@@ -287,7 +249,7 @@ export function ChatInterface({ issue, onUpdateIssue }: ChatInterfaceProps) {
                                   <Bot className="h-3 w-3 mt-1 text-muted-foreground" />
                                   <p className="text-xs text-muted-foreground">{exchange.system}</p>
                                 </div>
-                                {idx < message.transcript.length - 1 && (
+                                {idx < (message.transcript?.length || 0) - 1 && (
                                   <div className="h-px bg-amber-200 dark:bg-amber-800 my-2" />
                                 )}
                               </div>
@@ -321,16 +283,11 @@ export function ChatInterface({ issue, onUpdateIssue }: ChatInterfaceProps) {
                   </div>
                 </div>
 
-                {isUser && (
-                  <div className="flex-shrink-0 w-8 h-8 bg-secondary rounded-full flex items-center justify-center animate-scale-in shadow-sm">
-                    <User className="h-4 w-4 text-secondary-foreground" />
-                  </div>
-                )}
               </div>
             )
           })}
 
-          {isTyping && (
+          {isLoading && (
             <div className="flex gap-3 justify-start animate-fade-in-up">
               <div className="flex-shrink-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow-sm">
                 <Bot className="h-4 w-4 text-primary-foreground animate-pulse" />
@@ -358,29 +315,30 @@ export function ChatInterface({ issue, onUpdateIssue }: ChatInterfaceProps) {
         </div>
       </ScrollArea>
 
-      <div className="fixed bottom-0 right-0 left-0 lg:left-64 z-20 p-4 border-t border-border glass-effect animate-fade-in-up bg-background/95 backdrop-blur-sm">
-        <div className="flex gap-3 max-w-4xl mx-auto">
+      {/* iOS-style Input Area */}
+      <div className="fixed bottom-0 right-0 left-0 lg:left-64 z-20 safe-area border-t border-border glass-effect animate-fade-in-up bg-background/95 backdrop-blur-sm ios-no-bounce">
+        <div className="flex gap-3 max-w-4xl mx-auto p-4">
           <div className="flex-1 relative">
             <Input
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="Type your message..."
-              className="h-12 text-sm px-4 pr-14 rounded-2xl border-border/50 focus:border-primary/50 transition-all duration-300 focus:scale-[1.01] shadow-sm bg-background/80 backdrop-blur-sm"
-              disabled={isTyping}
+              className="h-12 text-sm px-4 pr-14 rounded-2xl border-border/50 focus:border-primary/50 ios-transition focus:scale-[1.01] shadow-sm bg-background/80 backdrop-blur-sm"
+              disabled={isLoading}
             />
             <Button
-              onClick={sendMessage}
-              disabled={!newMessage.trim() || isTyping}
-              className="absolute right-1.5 top-1.5 h-9 w-9 p-0 rounded-xl modern-hover animate-scale-in shadow-sm"
+              onClick={handleSendMessage}
+              disabled={!newMessage.trim() || isLoading}
+              className="absolute right-2 top-2 h-8 w-8 p-0 rounded-xl modern-hover animate-scale-in shadow-sm ios-button icon-only"
               size="sm"
             >
               <Send className="h-4 w-4" />
             </Button>
           </div>
         </div>
-        {isTyping && (
-          <div className="flex justify-center mt-3">
+        {isLoading && (
+          <div className="flex justify-center pb-3">
             <div className="text-xs text-muted-foreground animate-pulse bg-muted/50 px-3 py-1 rounded-full">
               AI is analyzing your message...
             </div>

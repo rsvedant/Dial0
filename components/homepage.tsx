@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Plus, MessageSquare, Clock, CheckCircle2 } from "lucide-react"
+import { Plus, MessageSquare, Clock, CheckCircle2, Menu } from "lucide-react"
 
 interface HomepageProps {
   onCreateIssue: () => void
@@ -11,11 +11,20 @@ interface HomepageProps {
     inProgress: number
     resolved: number
   }
+  onOpenMenu: () => void
 }
 
-export function Homepage({ onCreateIssue, issueStats }: HomepageProps) {
+export function Homepage({ onCreateIssue, issueStats, onOpenMenu }: HomepageProps) {
   return (
     <div className="flex flex-col items-center justify-center h-full p-6 bg-background relative">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onOpenMenu}
+        className="absolute left-4 top-4 ios-button icon-only large"
+      >
+        <Menu className="h-6 w-6" />
+      </Button>
       <div className="text-center max-w-md animate-fade-in-up">
         <div className="mb-8">
           <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-scale-in">

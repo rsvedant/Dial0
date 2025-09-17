@@ -4,6 +4,12 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* iOS Safe Area Insets */
+  --inset-t: env(safe-area-inset-top);
+  --inset-b: env(safe-area-inset-bottom);
+  --inset-l: env(safe-area-inset-left);
+  --inset-r: env(safe-area-inset-right);
+  
   /* Updated to modern black and white color scheme */
   --background: oklch(1 0 0); /* Pure white background */
   --foreground: oklch(0.15 0 0); /* Deep black text */
@@ -204,4 +210,231 @@
 
 .dark .glass-effect {
   background: oklch(0.05 0 0 / 0.8);
+}
+
+/* iOS-specific optimizations */
+@layer base {
+  html {
+    /* iOS system font stack */
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    /* Prevent text size adjustment */
+    -webkit-text-size-adjust: 100%;
+    /* Smooth scrolling */
+    scroll-behavior: smooth;
+    /* Prevent zoom on double tap */
+    touch-action: manipulation;
+    /* Prevent zoom */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  
+  body {
+    /* Prevent overscroll bounce */
+    overscroll-behavior: none;
+    /* Use dynamic viewport height */
+    min-height: 100dvh;
+    /* Prevent text selection on UI elements */
+    -webkit-user-select: none;
+    user-select: none;
+
+  }
+  
+  /* Allow text selection in content areas */
+  input, textarea, [contenteditable] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  
+  /* iOS form optimizations */
+  input, select, textarea, button {
+    font-size: 16px !important; /* Prevents zoom on focus */
+    -webkit-appearance: none;
+    appearance: none;
+    border-radius: 0;
+  }
+  
+  /* Force 16px font size on all interactive elements */
+  input[type="text"], 
+  input[type="email"], 
+  input[type="password"], 
+  input[type="search"], 
+  input[type="tel"], 
+  input[type="url"], 
+  textarea, 
+  select {
+    font-size: 16px !important;
+    -webkit-text-size-adjust: 100%;
+  }
+  
+  /* Prevent zoom on focus for all form elements */
+  input:focus, 
+  textarea:focus, 
+  select:focus {
+    font-size: 16px !important;
+    -webkit-text-size-adjust: 100%;
+  }
+  
+  /* Additional zoom prevention */
+  * {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.08);
+  }
+  
+  /* Allow text selection in input fields */
+  input, textarea, [contenteditable] {
+    -webkit-user-select: text;
+    -khtml-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+  }
+  
+  /* iOS scroll optimizations */
+  .scroll-container {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  
+  /* iOS safe area utilities */
+  .safe-top {
+    padding-top: max(var(--inset-t), 12px);
+  }
+  
+  .safe-bottom {
+    padding-bottom: max(var(--inset-b), 12px);
+  }
+  
+  .safe-left {
+    padding-left: max(var(--inset-l), 16px);
+  }
+  
+  .safe-right {
+    padding-right: max(var(--inset-r), 16px);
+  }
+  
+  .safe-area {
+    padding-top: max(var(--inset-t), 12px);
+    padding-bottom: max(var(--inset-b), 12px);
+    padding-left: max(var(--inset-l), 16px);
+    padding-right: max(var(--inset-r), 16px);
+  }
+  
+  /* iOS native-like transitions */
+  .ios-transition {
+    transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+  
+  /* iOS button press effect */
+  .ios-button:active {
+    transform: scale(0.98);
+    transition: transform 0.1s ease-out;
+  }
+  
+  /* iOS scroll momentum */
+  .ios-scroll {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+  
+  /* Prevent iOS bounce on fixed elements */
+  .ios-no-bounce {
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* iOS-native list styles */
+  .ios-list-item {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(20px);
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+  
+  .dark .ios-list-item {
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  .ios-list-item:hover {
+    background: rgba(255, 255, 255, 0.9);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+  
+  .dark .ios-list-item:hover {
+    background: rgba(0, 0, 0, 0.9);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* iOS-native tab bar */
+  .ios-tab-bar {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+  }
+  
+  .dark .ios-tab-bar {
+    background: rgba(0, 0, 0, 0.95);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  /* iOS-native button press effect */
+  .ios-button:active {
+    transform: scale(0.96);
+    transition: transform 0.1s ease-out;
+  }
+  
+  /* iOS accessibility - minimum 44pt touch targets */
+  .ios-button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Override for smaller icon-only buttons */
+  .ios-button.icon-only {
+    min-height: 40px;
+    min-width: 40px;
+  }
+  
+  /* Larger icon-only buttons for important actions */
+  .ios-button.icon-only.large {
+    min-height: 48px;
+    min-width: 48px;
+  }
+  
+  /* Ensure proper spacing for iOS buttons */
+  .ios-button:not(.icon-only) {
+    padding: 12px 16px;
+  }
+  
+  /* iOS-native sidebar */
+  .ios-sidebar {
+    background: rgba(248, 248, 248, 0.95);
+    backdrop-filter: blur(20px);
+    border-right: 1px solid rgba(0, 0, 0, 0.1);
+  }
+  
+  .dark .ios-sidebar {
+    background: rgba(28, 28, 30, 0.95);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  /* iOS-native mobile header */
+  .ios-mobile-header {
+    min-height: 60px;
+    padding: 12px 16px;
+  }
+  
+  .ios-mobile-header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
 }
