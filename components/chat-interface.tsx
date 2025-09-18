@@ -177,7 +177,7 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfac
 
   return (
     <div className="flex flex-col h-full bg-background ios-no-bounce">
-      <div className="fixed top-0 right-0 left-0 lg:left-64 z-20 safe-area border-b border-border glass-effect animate-slide-down bg-background/95 backdrop-blur-sm ios-no-bounce mt-[-18]">
+      <div className="fixed top-0 right-0 left-0 lg:left-64 z-20 safe-area border-b border-border glass-effect animate-slide-down bg-background/95 backdrop-blur-sm ios-no-bounce s:mt-[-18]">
         <div className="px-4 h-18">
           {/* Top row - Issue info and icon */}
           <div className="flex items-center gap-3 justify-between mb-3">
@@ -206,7 +206,7 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfac
       </div>
       
 
-      <ScrollArea className="flex-1 p-4 pt-24 pb-28 ios-scroll scroll-container" ref={scrollAreaRef}>
+  <ScrollArea className="flex-1 p-4 pt-24 pb-0 overflow-auto" ref={scrollAreaRef}>
         <div className="space-y-4 max-w-4xl mx-auto">
           {enhancedMessages.map((message, index) => {
             const isUser = message.sender === "user"

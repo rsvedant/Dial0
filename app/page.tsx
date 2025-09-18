@@ -76,7 +76,7 @@ export default function HomePage() {
   }, [updateIssueStatusMutation])
 
   return (
-    <div className="flex h-screen bg-background ios-no-bounce">
+    <div className="flex h-screen bg-background ios-no-bounce overflow-hidden">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/20 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -85,7 +85,7 @@ export default function HomePage() {
       {/* Sidebar */}
       <div
         className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-64 
+        fixed lg:static inset-y-0 left-0 z-50 w-64 lg:h-screen
         transform ios-transition lg:transform-none
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
       `}
@@ -100,7 +100,7 @@ export default function HomePage() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
+  <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile header */}
         {/* <div className="lg:hidden fixed top-0 left-0 right-0 z-30 flex items-center justify-between safe-area border-b border-border bg-background/95 backdrop-blur-sm ios-no-bounce ios-mobile-header">
           <Button
@@ -116,7 +116,7 @@ export default function HomePage() {
         </div> */}
 
         {/* Content area */}
-        <div className="flex-1 animate-fade-in-up pt-16 lg:pt-0 ios-scroll">
+  <div className="flex-1 animate-fade-in-up pt-16 lg:pt-0 overflow-hidden">
           {selectedIssue ? (
             <ChatInterface issue={selectedIssue} onUpdateIssue={updateIssue} onOpenMenu={() => setSidebarOpen(true)} />
           ) : (

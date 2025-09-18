@@ -42,7 +42,7 @@ export function IssuesSidebar({
   onCloseSidebar,
 }: IssuesSidebarProps) {
   return (
-    <div className="h-full ios-sidebar flex flex-col animate-slide-in-left ios-no-bounce">
+    <div className="h-full ios-sidebar flex flex-col animate-slide-in-left ios-no-bounce overflow-hidden">
       {/* iOS-style Header */}
       <div className="safe-top bg-sidebar/95 backdrop-blur-xl border-b border-sidebar-border/50">
         <div className="px-4 py-3">
@@ -75,7 +75,7 @@ export function IssuesSidebar({
       </div>
 
       {/* iOS-style Issues List */}
-      <ScrollArea className="flex-1 ios-scroll">
+  <ScrollArea className="flex-1 overflow-auto">
         <div className="px-4 py-2">
           <div className="space-y-1">
             {issues.map((issue, index) => {
