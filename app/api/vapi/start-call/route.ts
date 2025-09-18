@@ -52,7 +52,18 @@ If representative cannot help:
 2. "Can you escalate this to someone with more authority?"
 3. Get supervisor's name and direct number if possible
 
-Remember: You ARE the user, not calling FOR the user. Act with complete authority.`
+Remember: You ARE the user, not calling FOR the user. Act with complete authority.
+
+## END-OF-CALL REPORT FORMAT (REQUIRED)
+When the call concludes, produce an end-of-call report optimized for our app UI with the following structure and tone:
+- Start with a single-line outcome: Resolved, Partially Resolved, Scheduled, Escalated, or Unable to Resolve.
+- 2–5 concise bullets capturing: what was done, any commitments (dates/times/ticket numbers), and any required follow-ups.
+- If a callback or appointment was set, include date/time and confirmation number.
+- If verification occurred, list which identifiers were provided (no sensitive data).
+- If next steps are required from the user, list them clearly.
+- Keep it under 1200 characters.
+
+Your spoken behavior during the call should capture details necessary to generate this report.`
 
 function fillTemplate(tpl: string, data: Record<string, string | null | undefined>) {
   return tpl
@@ -146,6 +157,11 @@ export async function POST(req: NextRequest) {
       assistantOverrides: {
         // Webhook for server messages (takes precedence per assistant.server.url)
         server: { url: webhookUrl },
+        // Ensure monitor URLs are provisioned (docs: monitorPlan.listenEnabled/controlEnabled)
+        monitorPlan: {
+          listenEnabled: true,
+          controlEnabled: true,
+        },
         // Ensure we receive live updates
         serverMessages: [
           'status-update',
@@ -212,33 +228,6 @@ export async function POST(req: NextRequest) {
               callId: json?.call?.id || json?.id,
               type: 'monitor',
               content: JSON.stringify({ listenUrl: monitor.listenUrl, controlUrl: monitor.controlUrl }),
-            })
-          } catch {}
-          // Also drop a system message with Listen URL for quick access
-          try {
-            await convex.mutation(api.orchestration.appendMessage, {
-              issueId,
-              role: 'system',
-              content: `🔊 Listen live: ${monitor.listenUrl}`,
-            })
-          } catch {}
-        }
-        // Dev helper: seed a tiny transcript so the bubble renders immediately
-        if (process.env.NODE_ENV !== 'production') {
-          try {
-            await convex.mutation(api.orchestration.appendCallEvent, {
-              issueId,
-              callId: json?.call?.id || json?.id,
-              type: 'transcript',
-              role: 'assistant',
-              content: `Hi, this is ${context?.contact?.name || 'the support line'}. How can I help you today?`,
-            })
-            await convex.mutation(api.orchestration.appendCallEvent, {
-              issueId,
-              callId: json?.call?.id || json?.id,
-              type: 'transcript',
-              role: 'user',
-              content: context?.issue?.summary || 'I need help with my service.',
             })
           } catch {}
         }

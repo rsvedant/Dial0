@@ -114,11 +114,12 @@ export default function HomePage() {
   }
 
   const updateIssue = useCallback((updatedIssue: Issue) => {
-    // Reflect status changes to Convex if resolved
-    if (updatedIssue.status) {
+    // Reflect status changes to Convex only if changed.
+    const current = issues.find(i => i.id === updatedIssue.id)
+    if (updatedIssue.status && current && current.status !== updatedIssue.status) {
       updateIssueStatusMutation({ id: updatedIssue.id as any, status: updatedIssue.status })
     }
-  }, [updateIssueStatusMutation])
+  }, [updateIssueStatusMutation, issues])
 
   return (
     <div className="flex h-screen bg-background ios-no-bounce overflow-hidden">

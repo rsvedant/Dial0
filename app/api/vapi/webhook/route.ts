@@ -50,10 +50,7 @@ export async function POST(req: NextRequest) {
       await appendChat('📞 Call started.')
     } else if (type === 'call.ended' || (type === 'status-update' && event?.status === 'ended')) {
       await appendEvent({ type: 'lifecycle', status: 'ended' })
-      await appendChat('✅ Call ended. We believe the issue has been resolved or appropriate next steps were set.')
-      try {
-        await convex.mutation(api.orchestration.updateIssueStatus, { id: issueId as any, status: 'resolved' })
-      } catch {}
+      await appendChat('📞 Call ended. Generating final report…')
     } else if (type === 'call.update' || type === 'status-update') {
       const status = event?.status || 'in progress'
       await appendEvent({ type: 'status', status })
@@ -70,11 +67,37 @@ export async function POST(req: NextRequest) {
         await appendEvent({ type: 'transcript', role, content: text })
       }
     } else if (type === 'end-of-call-report') {
-      // Final summary with messages/transcript
+      // Final summary with messages/transcript and recording metadata
       const summary: string | undefined = event?.summary
       const finalTranscript: string | undefined = event?.transcript
+      const recordingUrl: string | undefined = event?.recordingUrl
+      // Some providers include cost/duration on the call object
+      const cost = event?.call?.cost ?? event?.cost
+      const durationSec = event?.call?.durationSec ?? event?.durationSec ?? event?.call?.durationSeconds
+
       if (summary) await appendEvent({ type: 'status', status: `summary: ${summary}` })
       if (finalTranscript) await appendEvent({ type: 'transcript', role: 'final', content: finalTranscript })
+      if (recordingUrl) {
+        await appendEvent({
+          type: 'recording',
+          content: JSON.stringify({ recordingUrl, cost, durationSec }),
+        })
+      }
+
+      // Append a formatted system message visible in the chat UI
+      const lines: string[] = []
+      lines.push('✅ End of call report')
+      if (summary) lines.push('', summary)
+      const meta: string[] = []
+      if (typeof durationSec === 'number') meta.push(`duration: ${Math.round(durationSec)}s`)
+      if (meta.length) lines.push('', `(${meta.join(' · ')})`)
+      if (recordingUrl) lines.push('', `🔗 Recording: ${recordingUrl}`)
+      await appendChat(lines.join('\n'))
+
+      // Only resolve the issue once the end-of-call report has been received
+      try {
+        await convex.mutation(api.orchestration.updateIssueStatus, { id: issueId as any, status: 'resolved' })
+      } catch {}
     }
 
     return NextResponse.json({ ok: true })

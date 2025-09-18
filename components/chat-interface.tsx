@@ -24,8 +24,81 @@ import {
   Sparkles,
   Menu,
   Camera,
+  Pause,
+  Play,
+  Radio,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Slider } from "@/components/ui/slider"
+// Compact inline audio player for recorded calls
+function InlineAudioPlayer({ src }: { src: string }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [duration, setDuration] = useState(0)
+  const [current, setCurrent] = useState(0)
+
+  const fmt = (t: number) => {
+    const m = Math.floor(t / 60)
+    const s = Math.floor(t % 60)
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  }
+
+  useEffect(() => {
+    const a = audioRef.current
+    if (!a) return
+    const onLoaded = () => setDuration(a.duration || 0)
+    const onTime = () => setCurrent(a.currentTime || 0)
+    const onEnded = () => setIsPlaying(false)
+    a.addEventListener('loadedmetadata', onLoaded)
+    a.addEventListener('timeupdate', onTime)
+    a.addEventListener('ended', onEnded)
+    return () => {
+      a.removeEventListener('loadedmetadata', onLoaded)
+      a.removeEventListener('timeupdate', onTime)
+      a.removeEventListener('ended', onEnded)
+    }
+  }, [])
+
+  const toggle = async () => {
+    const a = audioRef.current
+    if (!a) return
+    if (a.paused) {
+      try { await a.play() } catch {}
+      setIsPlaying(true)
+    } else {
+      a.pause()
+      setIsPlaying(false)
+    }
+  }
+
+  const seek = (vals: number[]) => {
+    const a = audioRef.current
+    if (!a || !vals?.length) return
+    const t = Math.min(Math.max(vals[0], 0), duration || 0)
+    a.currentTime = t
+    setCurrent(t)
+  }
+
+  const pct = duration > 0 ? (current / duration) * 100 : 0
+
+  return (
+    <div className="w-full rounded-xl border border-border bg-muted/40 px-3 py-2">
+      <div className="flex items-center gap-3">
+        <Button size="sm" variant="secondary" className="h-8 px-2" onClick={toggle}>
+          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        </Button>
+        <div className="flex-1">
+          <Slider value={[duration ? current : 0]} min={0} max={Math.max(duration, 1)} step={0.1} onValueChange={seek} className="w-full" />
+          <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+            <span>{fmt(current)}</span>
+            <span>{fmt(duration)}</span>
+          </div>
+        </div>
+      </div>
+      <audio ref={audioRef} src={src} preload="metadata" />
+    </div>
+  )
+}
 import { useChat } from "@/hooks/use-chat"
 import { TimelineIndicator } from "@/components/timeline-indicator"
 import { IssueIcon } from "@/components/issue-icon"
@@ -86,6 +159,13 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
   const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(new Set())
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const playNodeRef = useRef<AudioWorkletNode | ScriptProcessorNode | null>(null)
+  const pcmQueueRef = useRef<Float32Array[]>([])
+  const inputSampleRateRef = useRef<number>(8000) // default telephony; will auto-detect
+  const [isListeningLive, setIsListeningLive] = useState(false)
+  const [recordingUrlByMsg, setRecordingUrlByMsg] = useState<Record<string, string | undefined>>({})
 
   // Use the intelligent chat hook
   const { messages: chatMessages, isLoading, isIssueComplete, sendMessage: sendChatMessage } = useChat({
@@ -93,10 +173,9 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
     knownContext,
     onIssueComplete: (issueDetails) => {
       console.log('Issue complete:', issueDetails)
-      // Update issue status to resolved when complete
+      // Do not mark resolved here; it flips after call end via webhook.
       const updatedIssue = {
         ...issue,
-        status: "resolved" as const,
         messages: [
           ...issue.messages,
           ...chatMessages.map(msg => ({
@@ -181,6 +260,104 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
 
   const StatusIcon = statusConfig[issue.status].icon
 
+  // Small PCM player: consume Int16 PCM and play via WebAudio
+  const ensureAudioContext = () => {
+    // Use default hardware sample rate (commonly 44100/48000).
+    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+    return audioCtxRef.current
+  }
+  const playPcmInt16 = (int16: Int16Array, srcSampleRate?: number) => {
+    const ctx = ensureAudioContext()
+    if (ctx.state === 'suspended') {
+      // Resume on user gesture (the click that triggered listen)
+      void ctx.resume().catch(() => {})
+    }
+    const rate = srcSampleRate || inputSampleRateRef.current || 16000
+    // Create buffer with the ORIGINAL source sample rate; WebAudio will resample to ctx.sampleRate.
+    const audioBuffer = ctx.createBuffer(1, int16.length, rate)
+    const channel = audioBuffer.getChannelData(0)
+    for (let i = 0; i < int16.length; i++) channel[i] = int16[i] / 32768
+    const source = ctx.createBufferSource()
+    source.buffer = audioBuffer
+    source.connect(ctx.destination)
+    source.start()
+  }
+
+  const startListening = (listenUrl: string) => {
+    if (wsRef.current) stopListening()
+    try {
+      const ws = new WebSocket(listenUrl)
+      ws.binaryType = 'arraybuffer'
+      ws.onopen = () => setIsListeningLive(true)
+      ws.onmessage = async (evt) => {
+        const data: any = evt.data
+        if (data instanceof ArrayBuffer) {
+          // Try to detect WAV header to extract sample rate
+          let buf = data
+          let srcRate = inputSampleRateRef.current
+          if (data.byteLength >= 44) {
+            const view = new DataView(data)
+            // 'RIFF' and 'WAVE'
+            if (view.getUint32(0, false) === 0x52494646 && view.getUint32(8, false) === 0x57415645) {
+              // Sample rate at byte offset 24 (little endian)
+              const rate = view.getUint32(24, true)
+              if (rate && rate > 0 && rate < 192000) srcRate = rate
+              // Basic WAV header is typically 44 bytes; skip header for PCM data
+              buf = data.slice(44)
+            }
+          }
+          const int16 = new Int16Array(buf)
+          playPcmInt16(int16, srcRate)
+        } else if (data instanceof Blob) {
+          const buf = await data.arrayBuffer()
+          // Same WAV detection for Blob
+          let raw = buf
+          let srcRate = inputSampleRateRef.current
+          if (buf.byteLength >= 44) {
+            const view = new DataView(buf)
+            if (view.getUint32(0, false) === 0x52494646 && view.getUint32(8, false) === 0x57415645) {
+              const rate = view.getUint32(24, true)
+              if (rate && rate > 0 && rate < 192000) srcRate = rate
+              raw = buf.slice(44)
+            }
+          }
+          const int16 = new Int16Array(raw)
+          playPcmInt16(int16, srcRate)
+        } else if (typeof data === 'string') {
+          // Try to parse control messages for sampleRate hints
+          try {
+            const msg = JSON.parse(data)
+            const rate = msg?.sampleRate || msg?.samplerate || msg?.format?.sampleRate
+            if (typeof rate === 'number' && rate > 0 && rate < 192000) {
+              inputSampleRateRef.current = rate
+            }
+          } catch {
+            // non-JSON control message; ignore
+          }
+        }
+      }
+      ws.onclose = () => setIsListeningLive(false)
+      ws.onerror = () => setIsListeningLive(false)
+      wsRef.current = ws
+    } catch (e) {
+      console.error('Failed to open listen WebSocket', e)
+      setIsListeningLive(false)
+    }
+  }
+  const stopListening = () => {
+    try { wsRef.current?.close() } catch {}
+    wsRef.current = null
+    setIsListeningLive(false)
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      try { wsRef.current?.close() } catch {}
+      try { audioCtxRef.current?.close() } catch {}
+    }
+  }, [])
+
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden bg-background ios-no-bounce">
       <ScrollArea className="flex-1 min-h-0 overflow-hidden" ref={scrollAreaRef}>
@@ -217,6 +394,10 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
             const messageConfig = messageTypeConfig[message.type || "text"]
             const MessageIcon = messageConfig.icon
             const isExpanded = expandedTranscripts.has(message.id)
+            const anyMsg: any = message as any
+            const listenUrl: string | undefined = anyMsg?.monitor?.listenUrl
+            const isEnded: boolean = Boolean(anyMsg?.isEnded)
+            const recordingUrl: string | undefined = anyMsg?.recordingUrl
 
             return (
               <div
@@ -225,7 +406,7 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
                 style={{ animationDelay: `${index * 0.05}s` }}
               >
 
-                <div className={cn("max-w-[75%] transition-all duration-300", isUser && "ml-auto")}>
+                <div className={cn("max-w-[75%] transition-all duration-300", isUser && "ml-auto")}> 
                   <div
                     className={cn(
                       "rounded-3xl px-6 py-4 transition-all duration-300",
@@ -236,17 +417,45 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
                   >
                     {message.type === "transcript" ? (
                       <div>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-2">
                           <p className="text-sm font-medium">{message.content}</p>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => toggleTranscript(message.id)}
-                            className="h-6 w-6 p-0 ml-2"
-                          >
-                            {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            {/* Listen Live control */}
+                            {listenUrl && !isEnded && (
+                              isListeningLive ? (
+                                <Button variant="secondary" size="sm" className="h-7 px-2" onClick={stopListening}>
+                                  <Pause className="h-3 w-3 mr-1" /> Stop
+                                </Button>
+                              ) : (
+                                <Button variant="secondary" size="sm" className="h-7 px-2" onClick={() => startListening(listenUrl)}>
+                                  <Radio className="h-3 w-3 mr-1" /> Listen live
+                                </Button>
+                              )
+                            )}
+                            {/* Live badge while call is ongoing */}
+                            {!isEnded && (
+                              <span className="ml-1 inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-300 border border-red-500/30">
+                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                                Live
+                              </span>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleTranscript(message.id)}
+                              className="h-6 w-6 p-0 ml-1"
+                            >
+                              {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            </Button>
+                          </div>
                         </div>
+
+                        {/* Inline recording player */}
+                        {recordingUrl && (
+                          <div className="mt-2">
+                            <InlineAudioPlayer src={recordingUrl} />
+                          </div>
+                        )}
 
                         {isExpanded && message.transcript && (
                           <div className="mt-3 space-y-2 border-t border-amber-200 dark:border-amber-800 pt-3">

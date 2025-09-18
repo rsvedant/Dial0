@@ -44,6 +44,18 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
       const monitorEv = callEvents.find(ev => ev.type === 'monitor')
       let monitor: { listenUrl?: string; controlUrl?: string } | undefined
       try { monitor = monitorEv?.content ? JSON.parse(monitorEv.content) : undefined } catch {}
+      // Determine if call ended and extract recordingUrl (from our webhook end-of-call-report)
+      const ended = callEvents.some(ev => (ev.type === 'lifecycle' && ev.status === 'ended') || (ev.type === 'status' && /ended/i.test(ev.status || '')))
+      let recordingUrl: string | undefined
+      let recordingMeta: any
+      const recEv = callEvents.find(ev => ev.type === 'recording')
+      if (recEv?.content) {
+        try {
+          const obj = JSON.parse(recEv.content)
+          recordingUrl = obj?.recordingUrl
+          recordingMeta = obj
+        } catch {}
+      }
       const transcriptPairs: { user: string; system: string }[] = []
       let pendingUser: string | null = null
       // Collapse events into paired turns (rough approximation)
@@ -76,6 +88,13 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
       ;(bubble as any).transcript = transcriptPairs
       if (monitor) {
         (bubble as any).monitor = monitor
+      }
+      if (ended) {
+        (bubble as any).isEnded = true
+      }
+      if (recordingUrl) {
+        (bubble as any).recordingUrl = recordingUrl
+        if (recordingMeta) (bubble as any).recordingMeta = recordingMeta
       }
 
       // Insert/replace a single bubble at the end
@@ -150,9 +169,8 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
         // Send to routing agent
         await handleInkeepIntegration(issueDetails)
 
-        try {
-          await updateIssueStatus({ id: issueId as any, status: 'resolved' })
-        } catch {}
+        // Do NOT mark the issue resolved here. Resolution should only occur
+        // after the voice call ends (handled by the Vapi webhook handler).
         onIssueComplete?.(issueDetails)
       } else {
         // Don't persist empty responses
@@ -286,5 +304,6 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
     resetChat
   }
 }
+
 
 

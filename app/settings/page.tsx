@@ -9,9 +9,10 @@ import { useToast } from "@/hooks/use-toast"
 import { useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { useRouter } from "next/navigation"
-import { Menu } from "lucide-react"
+import { Menu, Plus } from "lucide-react"
 import { IssuesSidebar } from "@/components/issues-sidebar"
 import { Logo } from "@/components/logo"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function ProfilePage() {
   const browserTimezone = React.useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
@@ -41,6 +42,15 @@ export default function ProfilePage() {
   const [phone, setPhone] = React.useState("")
   const [address, setAddress] = React.useState("")
   const [isSaving, setIsSaving] = React.useState(false)
+  const [selectedVoice, setSelectedVoice] = React.useState("")
+
+  // Mock voice options - in a real app, these would come from an API
+  const voiceOptions = [
+    { id: "voice-1", name: "Sarah - Professional" },
+    { id: "voice-2", name: "Alex - Friendly" },
+    { id: "voice-3", name: "Jordan - Calm" },
+    { id: "voice-4", name: "Taylor - Energetic" },
+  ]
 
   React.useEffect(() => {
     if (!existing) return
@@ -50,6 +60,7 @@ export default function ProfilePage() {
     setEmail(existing.email ?? "")
     setPhone(existing.phone ?? "")
     setAddress(existing.address ?? "")
+    setSelectedVoice(existing.selectedVoice ?? "")
   }, [existing])
 
   const displayedTimezone = existing?.timezone ?? browserTimezone
@@ -65,6 +76,7 @@ export default function ProfilePage() {
         phone: phone || undefined,
         address: address || undefined,
         timezone: displayedTimezone || undefined,
+        selectedVoice: selectedVoice || undefined,
       })
       toast({ title: "Saved", description: "Your settings have been updated." })
     } catch (err: any) {
@@ -121,6 +133,36 @@ export default function ProfilePage() {
         </div>
 
         <div className="grid gap-8">
+          {/* Voice Selection Section */}
+          <section>
+            <h2 className="text-base font-semibold">Voice Assistant</h2>
+            <p className="text-sm text-muted-foreground">Choose your preferred voice for calls and interactions</p>
+            <div className="mt-4 flex items-center gap-3">
+              <div className="flex-1">
+                <Select value={selectedVoice} onValueChange={setSelectedVoice}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a voice..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {voiceOptions.map((voice) => (
+                      <SelectItem key={voice.id} value={voice.id}>
+                        {voice.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/profile/create-voice")}
+                className="flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Create New Voice
+              </Button>
+            </div>
+          </section>
           <Alert>
             <AlertTitle>How we use your details</AlertTitle>
             <AlertDescription>

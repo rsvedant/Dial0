@@ -186,6 +186,7 @@ export const saveSettings = mutation({
         birthdate: v.optional(v.string()),
         phone: v.optional(v.string()),
         timezone: v.optional(v.string()),
+        selectedVoice: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const updatedAt = new Date().toISOString();

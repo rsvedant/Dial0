@@ -15,6 +15,7 @@ export default defineSchema({
 		birthdate: v.optional(v.string()), // ISO date
 		phone: v.optional(v.string()),
 		timezone: v.optional(v.string()),
+		selectedVoice: v.optional(v.string()),
 		updatedAt: v.string(), // ISO timestamp
 	}).index("by_updatedAt", ["updatedAt"]),
 	orchestrationContexts: defineTable({
