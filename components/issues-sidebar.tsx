@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 import { IssueIcon } from "@/components/issue-icon"
 
 interface IssuesSidebarProps {
-  issues: Issue[]
+  issues: Array<Issue & { messageCount?: number; lastMessage?: string }>
   selectedIssueId: string | null
   onSelectIssue: (issueId: string) => void
   onGoHome: () => void
@@ -126,20 +126,29 @@ export function IssuesSidebar({
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
                         <span>{issue.createdAt.toLocaleDateString()}</span>
-                        {issue.messages.length > 0 && (
+                        {(issue as any).messageCount ? (
+                          <>
+                            <span>•</span>
+                            <span>{(issue as any).messageCount} messages</span>
+                          </>
+                        ) : issue.messages && issue.messages.length > 0 ? (
                           <>
                             <span>•</span>
                             <span>{issue.messages.length} messages</span>
                           </>
-                        )}
+                        ) : null}
                       </div>
                       
                       {/* Last message preview */}
-                      {issue.messages.length > 0 && (
+                      {(issue as any).lastMessage ? (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                          {(issue as any).lastMessage}
+                        </p>
+                      ) : issue.messages && issue.messages.length > 0 ? (
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
                           {issue.messages[issue.messages.length - 1].content}
                         </p>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </div>

@@ -9,8 +9,8 @@
     "start": "next start"
   },
   "dependencies": {
-    "@convex-dev/better-auth": "^0.8.0",
     "@google/generative-ai": "^0.24.1",
+    "@anthropic-ai/sdk": "^0.62.0",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",

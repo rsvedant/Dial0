@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateInkeepConnection, searchInkeepKnowledgeBase, getInkeepContext } from '@/lib/inkeep-service'
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,36 +7,13 @@ export async function GET(req: NextRequest) {
 
     switch (testType) {
       case 'connection':
-        const isConnected = await validateInkeepConnection()
-        return NextResponse.json({
-          success: isConnected,
-          message: isConnected ? 'Inkeep connection successful' : 'Inkeep connection failed',
-          timestamp: new Date().toISOString()
-        })
+        return NextResponse.json({ success: true, message: 'Test endpoint alive' })
 
       case 'search':
-        const query = searchParams.get('query') || 'test search'
-        const searchResults = await searchInkeepKnowledgeBase({
-          query,
-          maxResults: 3,
-          includeContext: true
-        })
-        return NextResponse.json({
-          success: true,
-          query,
-          results: searchResults,
-          timestamp: new Date().toISOString()
-        })
+        return NextResponse.json({ success: false, message: 'Deprecated in new routing flow' })
 
       case 'context':
-        const topic = searchParams.get('topic') || 'general help'
-        const context = await getInkeepContext(topic)
-        return NextResponse.json({
-          success: true,
-          topic,
-          context,
-          timestamp: new Date().toISOString()
-        })
+        return NextResponse.json({ success: false, message: 'Deprecated in new routing flow' })
 
       default:
         return NextResponse.json({
@@ -62,7 +38,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { testQuery } = await req.json()
+  const { testQuery } = await req.json()
 
     if (!testQuery) {
       return NextResponse.json(
@@ -86,8 +62,9 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        issueDetails: testQuery,
-        userQuery: testQuery
+        issueDetails: `ISSUE_COMPLETE: ${testQuery}`,
+        userQuery: testQuery,
+        issueId: 'test-issue-1'
       })
     })
 

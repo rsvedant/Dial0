@@ -1,12 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { IssuesSidebar } from "@/components/issues-sidebar"
 import { ChatInterface } from "@/components/chat-interface"
 import { Homepage } from "@/components/homepage"
 import { Button } from "@/components/ui/button"
 import { Menu } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useQuery, useMutation } from "convex/react"
+import { api } from "@/convex/_generated/api"
 
 export interface Issue {
   id: string
@@ -23,60 +25,25 @@ export interface Message {
   timestamp: Date
 }
 
-const mockIssues: Issue[] = [
-  {
-    id: "1",
-    title: "Login page not loading",
-    status: "open",
-    createdAt: new Date("2024-01-15"),
-    messages: [
-      {
-        id: "1",
-        content: "The login page is not loading properly. I get a blank screen when I try to access it.",
-        sender: "user",
-        timestamp: new Date("2024-01-15T10:00:00"),
-      },
-      {
-        id: "2",
-        content:
-          "I understand you're experiencing issues with the login page. Let me help you troubleshoot this. Can you tell me which browser you're using?",
-        sender: "system",
-        timestamp: new Date("2024-01-15T10:01:00"),
-      },
-    ],
-  },
-  {
-    id: "2",
-    title: "Payment processing error",
-    status: "in-progress",
-    createdAt: new Date("2024-01-14"),
-    messages: [
-      {
-        id: "3",
-        content: 'I\'m getting an error when trying to process payments. The error message says "Transaction failed".',
-        sender: "user",
-        timestamp: new Date("2024-01-14T14:30:00"),
-      },
-    ],
-  },
-  {
-    id: "3",
-    title: "Dashboard performance issues",
-    status: "resolved",
-    createdAt: new Date("2024-01-13"),
-    messages: [
-      {
-        id: "4",
-        content: "The dashboard is loading very slowly, especially the analytics section.",
-        sender: "user",
-        timestamp: new Date("2024-01-13T09:15:00"),
-      },
-    ],
-  },
-]
+// No mock issues; source from Convex
 
 export default function HomePage() {
-  const [issues, setIssues] = useState<Issue[]>(mockIssues)
+  const convexIssues = useQuery(api.orchestration.listIssuesWithMeta, {}) as any[] | undefined
+  const createIssueMutation = useMutation(api.orchestration.createIssue)
+  const updateIssueStatusMutation = useMutation(api.orchestration.updateIssueStatus)
+
+  const issues: (Issue & { messageCount?: number; lastMessage?: string })[] = useMemo(() => {
+    if (!convexIssues) return []
+    return convexIssues.map((doc) => ({
+      id: doc._id,
+      title: doc.title,
+      status: doc.status,
+      createdAt: new Date(doc.createdAt),
+      messages: [],
+      messageCount: doc.messageCount,
+      lastMessage: doc.lastMessage,
+    }))
+  }, [convexIssues])
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null) // Start with no issue selected to show homepage
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -89,27 +56,24 @@ export default function HomePage() {
     resolved: issues.filter((issue) => issue.status === "resolved").length,
   }
 
-  const createNewIssue = () => {
-    const newIssue: Issue = {
-      id: Date.now().toString(),
-      title: "New Issue",
-      status: "open",
-      createdAt: new Date(),
-      messages: [],
-    }
-    setIssues((prev) => [newIssue, ...prev])
-    setSelectedIssueId(newIssue.id)
+  const createNewIssue = useCallback(async () => {
+    const title = "New Issue"
+    const res = await createIssueMutation({ title })
+    setSelectedIssueId(res.id as unknown as string)
     setSidebarOpen(false)
-  }
+  }, [createIssueMutation])
 
   const goHome = () => {
     setSelectedIssueId(null)
     setSidebarOpen(false)
   }
 
-  const updateIssue = (updatedIssue: Issue) => {
-    setIssues((prev) => prev.map((issue) => (issue.id === updatedIssue.id ? updatedIssue : issue)))
-  }
+  const updateIssue = useCallback((updatedIssue: Issue) => {
+    // Reflect status changes to Convex if resolved
+    if (updatedIssue.status) {
+      updateIssueStatusMutation({ id: updatedIssue.id as any, status: updatedIssue.status })
+    }
+  }, [updateIssueStatusMutation])
 
   return (
     <div className="flex h-screen bg-background ios-no-bounce">

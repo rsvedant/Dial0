@@ -8,8 +8,11 @@ Create a `.env.local` file in the root directory with the following variables:
 # Required: Gemini API Key for LLM chat functionality
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# Optional: For production Inkeep integration
-INKEEP_API_KEY=your_inkeep_api_key_here
+# Required: Anthropic for routing agent (Claude 3 Opus)
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# Convex URL (from the Convex dashboard)
+NEXT_PUBLIC_CONVEX_URL=https://<your-convex-deployment>.convex.cloud
 
 # Optional: For production Vapi integration  
 VAPI_PUBLIC_KEY=your_vapi_public_key_here
@@ -24,16 +27,9 @@ VAPI_PRIVATE_KEY=your_vapi_private_key_here
 3. Generate an API key
 4. Add it to your `.env.local` file
 
-### Inkeep API Key (Required for Full Functionality)
-1. Sign up at [Inkeep](https://inkeep.com/)
-2. Create a new project
-3. Go to **Projects** → **Assistants** tab
-4. Click **Create assistant** → Choose **API**
-5. Name your assistant (e.g., "Support Assistant")
-6. Copy the generated API key
-7. Add it to your `.env.local` file as `INKEEP_API_KEY`
-8. Upload your documentation/knowledge base content to Inkeep
-9. Configure your knowledge base settings
+### Anthropic API Key
+1. Create an Anthropic account and API key: https://console.anthropic.com/
+2. Add it to your `.env.local` file
 
 ### Vapi API Keys (Optional)
 1. Sign up at [Vapi](https://vapi.ai/)
@@ -53,15 +49,14 @@ VAPI_PRIVATE_KEY=your_vapi_private_key_here
 1. Start the development server: `npm run dev`
 2. Create a new issue from the homepage
 3. Describe a problem in the chat interface
-4. Watch as the AI gathers information and processes it through the system
+4. When Gemini responds with ISSUE_COMPLETE, the routing agent (Claude via Anthropic) builds a voice-call context
+5. Check browser console for "Inkeep routing context (client): ..." and server logs for the structured JSON
 
-### Inkeep Integration Testing
-Test your Inkeep integration with these endpoints:
+### Routing Agent Testing
+Use these endpoints for quick checks:
 
-1. **Connection Test**: `GET /api/inkeep/test?type=connection`
-2. **Search Test**: `GET /api/inkeep/test?type=search&query=your-search-term`
-3. **Context Test**: `GET /api/inkeep/test?type=context&topic=your-topic`
-4. **Full Analysis Test**: `POST /api/inkeep/test` with body `{"testQuery": "I'm having login issues"}`
+1. **Smoke Test**: `GET /api/inkeep/test?type=connection`
+2. **Full Routing Test**: `POST /api/inkeep/test` with body `{"testQuery": "Schedule an appointment with Dr. Smith for a check-up next week"}`
 
 ### Testing Without Inkeep API Key
 The system will automatically fall back to mock responses if:
@@ -73,22 +68,20 @@ The system will automatically fall back to mock responses if:
 
 - ✅ Clean UI (liquid glass styling removed)
 - ✅ Gemini LLM integration for intelligent chat
-- ✅ **Real Inkeep integration** with OpenAI-compatible API
-- ✅ Knowledge base search and analysis
-- ✅ Automatic fallback to mock responses when Inkeep is unavailable
-- ✅ Vapi integration for automated calling (mock implementation)
-- ✅ Complete workflow from chat to human escalation
+- ✅ Multi-agent orchestration: Gemini (chat) → Claude (routing)
+- ✅ Routing context persisted in Convex (global)
+- ✅ Client and server console logging of built context
+- ✅ Vapi integration placeholder (call not yet placed)
+- ✅ Clean workflow from chat to context build
 - ✅ Comprehensive testing endpoints
 
 ## Integration Features
 
-### Inkeep Integration
-- **Real API Integration**: Uses Inkeep's OpenAI-compatible endpoints
-- **Multiple Models**: Supports `inkeep-qa-expert`, `inkeep-context`, `inkeep-base`, and `inkeep-rag`
-- **Knowledge Base Search**: Searches your uploaded documentation
-- **Contextual Analysis**: Provides AI-powered issue analysis
-- **Graceful Fallback**: Automatically switches to mock responses if API is unavailable
-- **Connection Validation**: Tests API connectivity before making requests
+### Orchestration Details
+- Chat: Gemini (via `@google/generative-ai`) guides the user to a complete issue summary (`ISSUE_COMPLETE: ...`).
+- Routing Agent: Claude 3 Opus (via `@anthropic-ai/sdk`) transforms the summary into strict JSON for a voice agent.
+- Persistence: Latest routing context saved to Convex (`orchestrationContexts` table).
+- UI: After completion, frontend calls `/api/inkeep`, prints context to console, and shows a brief confirmation.
 
 ### Next Steps for Full Production
 1. **Set up your Inkeep account** and get your API key

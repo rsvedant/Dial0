@@ -108,18 +108,8 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfac
     }
   })
 
-  // Combine original messages with chat messages
-  const allMessages: ExtendedMessage[] = [
-    ...issue.messages.map((msg) => ({ ...msg, type: "text" as const })),
-    ...chatMessages.map((msg) => ({
-      ...msg,
-      type: msg.type || "text" as const
-    }))
-  ].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
-
-  // Add welcome message if no chat messages yet
+  // Use only chat messages from Convex to avoid duplication with static issue.messages
   const enhancedMessages: ExtendedMessage[] = chatMessages.length === 0 ? [
-    ...allMessages,
     {
       id: "welcome",
       content: "Hi! I'm here to help you with your issue. Could you please describe what problem you're experiencing?",
@@ -127,7 +117,7 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfac
       timestamp: new Date(),
       type: "text" as const,
     }
-  ] : allMessages
+  ] : chatMessages.map((msg) => ({ ...msg, type: msg.type || "text" as const }))
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -136,6 +126,23 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfac
   useEffect(() => {
     scrollToBottom()
   }, [enhancedMessages])
+
+  // Adjust for iOS keyboard to avoid layout jumps
+  useEffect(() => {
+    if (typeof window === "undefined" || !(window as any).visualViewport) return
+    const vv = (window as any).visualViewport as VisualViewport
+    const onResize = () => {
+      const kb = Math.max(0, window.innerHeight - vv.height)
+      document.documentElement.style.setProperty('--kb', kb + 'px')
+    }
+    onResize()
+    vv.addEventListener('resize', onResize)
+    vv.addEventListener('scroll', onResize)
+    return () => {
+      vv.removeEventListener('resize', onResize)
+      vv.removeEventListener('scroll', onResize)
+    }
+  }, [])
 
   const toggleTranscript = (messageId: string) => {
     setExpandedTranscripts((prev) => {
@@ -199,7 +206,7 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfac
       </div>
       
 
-      <ScrollArea className="flex-1 p-4 pt-24 ios-scroll scroll-container" ref={scrollAreaRef}>
+      <ScrollArea className="flex-1 p-4 pt-24 pb-28 ios-scroll scroll-container" ref={scrollAreaRef}>
         <div className="space-y-4 max-w-4xl mx-auto">
           {enhancedMessages.map((message, index) => {
             const isUser = message.sender === "user"
@@ -316,7 +323,7 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfac
       </ScrollArea>
 
       {/* iOS-style Input Area */}
-      <div className="fixed bottom-0 right-0 left-0 lg:left-64 z-20 safe-area border-t border-border glass-effect animate-fade-in-up bg-background/95 backdrop-blur-sm ios-no-bounce">
+      <div className="sticky bottom-0 z-20 safe-area border-t border-border glass-effect animate-fade-in-up bg-background/95 backdrop-blur-sm ios-no-bounce" style={{ paddingBottom: 'var(--kb, 0px)' }}>
         <div className="flex gap-3 max-w-4xl mx-auto p-4">
           <div className="flex-1 relative">
             <Input

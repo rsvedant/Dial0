@@ -1,4 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { useConvex, useQuery, useMutation } from 'convex/react'
+import { api } from '@/convex/_generated/api'
 
 interface ChatMessage {
   id: string
@@ -14,23 +16,37 @@ interface UseChatOptions {
 }
 
 export function useChat({ issueId, onIssueComplete }: UseChatOptions) {
+  // Live messages from Convex
+  const convexMessages = useQuery(api.orchestration.listMessages, issueId ? { issueId } : undefined) as any[] | undefined
+  const appendMessage = useMutation(api.orchestration.appendMessage)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isIssueComplete, setIsIssueComplete] = useState(false)
+  const bottomRef = useRef<HTMLDivElement | null>(null)
+
+  // Project Convex rows to ChatMessage shape
+  useEffect(() => {
+    if (!convexMessages) return
+    const mapped: ChatMessage[] = convexMessages.map((row) => ({
+      id: row._id, // Convex doc id
+      content: row.content,
+      sender: row.role === 'user' ? 'user' : 'system',
+      timestamp: new Date(row.createdAt),
+      type: row.role === 'system' ? 'system' : 'text',
+    }))
+    setMessages(mapped)
+  }, [convexMessages])
+
+  // Smoothly keep scroll pinned to bottom when new messages arrive
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   const sendMessage = useCallback(async (content: string) => {
     if (!content.trim() || isLoading) return
 
-    // Add user message
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      content,
-      sender: 'user',
-      timestamp: new Date(),
-      type: 'text'
-    }
-
-    setMessages(prev => [...prev, userMessage])
+    // Persist user message first to Convex, UI reflects via live query
+    await appendMessage({ issueId, role: 'user', content })
     setIsLoading(true)
 
     try {
@@ -41,9 +57,9 @@ export function useChat({ issueId, onIssueComplete }: UseChatOptions) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [...messages, userMessage].map(msg => ({
-            role: msg.sender === 'user' ? 'user' : 'assistant',
-            content: msg.content
+          messages: [...(messages || []), { role: 'user', content }].map(msg => ({
+            role: (msg as any).role ?? (msg.sender === 'user' ? 'user' : 'assistant'),
+            content: (msg as any).content ?? msg.content
           })),
           issueId
         })
@@ -58,51 +74,30 @@ export function useChat({ issueId, onIssueComplete }: UseChatOptions) {
       // Check if issue understanding is complete
       if (data.isComplete) {
         setIsIssueComplete(true)
-        
+
         // Extract issue details and send to Inkeep
         const issueDetails = data.message.replace('ISSUE_COMPLETE: ', '')
-        
-        // Add completion message
-        const completionMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          content: 'Perfect! I have all the information I need. Let me connect you with our documentation system and the right person to help you.',
-          sender: 'system',
-          timestamp: new Date(),
-          type: 'status'
-        }
 
-        setMessages(prev => [...prev, completionMessage])
+        // Persist a system acknowledgment message; UI updates via query
+        await appendMessage({
+          issueId,
+          role: 'system',
+          content: 'Perfect! I have all the information I need. Building call context...'
+        })
 
-        // Send to Inkeep
+        // Send to routing agent
         await handleInkeepIntegration(issueDetails)
-        
+
         onIssueComplete?.(issueDetails)
       } else {
-        // Add AI response
-        const aiMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          content: data.message,
-          sender: 'system',
-          timestamp: new Date(),
-          type: 'text'
-        }
-
-        setMessages(prev => [...prev, aiMessage])
+        // Persist AI response
+        await appendMessage({ issueId, role: 'assistant', content: data.message })
       }
 
     } catch (error) {
       console.error('Failed to send message:', error)
       
-      // Add error message
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        content: 'Sorry, I encountered an error. Please try again.',
-        sender: 'system',
-        timestamp: new Date(),
-        type: 'system'
-      }
-
-      setMessages(prev => [...prev, errorMessage])
+      await appendMessage({ issueId, role: 'system', content: 'Sorry, I encountered an error. Please try again.' })
     } finally {
       setIsLoading(false)
     }
@@ -117,22 +112,26 @@ export function useChat({ issueId, onIssueComplete }: UseChatOptions) {
         },
         body: JSON.stringify({
           issueDetails,
-          userQuery: messages[0]?.content || 'User issue'
+          userQuery: messages[0]?.content || 'User issue',
+          issueId,
         })
       })
 
       const data = await response.json()
 
       if (data.success) {
-        const inkeepMessage: ChatMessage = {
-          id: (Date.now() + 2).toString(),
-          content: `✅ ${data.message}\n\n📞 Expected response time: ${data.estimatedResponseTime}`,
-          sender: 'system',
-          timestamp: new Date(),
-          type: 'info'
-        }
+        // Print built routing context to the browser console, as requested
+        console.log('Inkeep routing context (client):', data.context)
 
-        setMessages(prev => [...prev, inkeepMessage])
+        await appendMessage({
+          issueId,
+          role: 'system',
+          content:
+            `✅ Routing context prepared for voice agent.\n` +
+            `• Purpose: ${data.context?.callPurpose || 'N/A'}\n` +
+            `• Contact: ${data.context?.contact?.name || 'Unknown'} (${data.context?.contact?.type || 'service'})` +
+            `${data.context?.contact?.phoneNumber ? `\n• Phone: ${data.context.contact.phoneNumber}` : ''}`,
+        })
       }
     } catch (error) {
       console.error('Inkeep integration failed:', error)
