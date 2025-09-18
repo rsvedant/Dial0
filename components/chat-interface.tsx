@@ -163,7 +163,7 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
   const wsRef = useRef<WebSocket | null>(null)
   const playNodeRef = useRef<AudioWorkletNode | ScriptProcessorNode | null>(null)
   const pcmQueueRef = useRef<Float32Array[]>([])
-  const inputSampleRateRef = useRef<number>(8000) // default telephony; will auto-detect
+  const inputSampleRateRef = useRef<number>(48000) // default to 16 kHz PCM; will auto-detect via headers/control messages
   const [isListeningLive, setIsListeningLive] = useState(false)
   const [recordingUrlByMsg, setRecordingUrlByMsg] = useState<Record<string, string | undefined>>({})
 

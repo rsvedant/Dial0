@@ -315,6 +315,37 @@ Build the JSON now. Output JSON only.`
     let callInitiated = false
     let callError: any = null
     try {
+      // Idempotency guard: if a recent start request or monitor exists, skip triggering another call
+      let shouldSkip = false
+      if (convex && issueId) {
+        try {
+          const events = await convex.query(api.orchestration.listCallEvents, { issueId })
+          const now = Date.now()
+          // Recent 'start-call-request' within 12s or 'monitor' within 60s indicates a call is in-flight or active
+          for (let i = events.length - 1; i >= 0; i--) {
+            const ev = events[i] as any
+            const ts = ev?.createdAt ? Date.parse(ev.createdAt) : 0
+            if (ev?.type === 'start-call-request' && ts && now - ts < 12_000) { shouldSkip = true; break }
+            if (ev?.type === 'monitor' && ts && now - ts < 60_000) { shouldSkip = true; break }
+            // Break early if event is older than 60s
+            if (ts && now - ts > 60_000) break
+          }
+          if (!shouldSkip) {
+            // Place a short-lived start lock so parallel triggers skip
+            await convex.mutation(api.orchestration.appendCallEvent, {
+              issueId,
+              type: 'start-call-request',
+              content: JSON.stringify({ at: new Date().toISOString() }),
+            })
+          }
+        } catch (e) {
+          console.warn('Idempotency pre-check failed:', e)
+        }
+      }
+      if (shouldSkip) {
+        callInitiated = false
+        callError = 'Skipped duplicate start-call: recent call in progress.'
+      } else {
       const origin = new URL(req.url).origin
       const startResp = await fetch(`${origin}/api/vapi/start-call`, {
         method: 'POST',
@@ -326,6 +357,7 @@ Build the JSON now. Output JSON only.`
       if (!startResp.ok) {
         callError = call?.error || 'Failed to start Vapi call'
         console.error('Vapi start-call failed from Inkeep route:', call)
+      }
       }
     } catch (e) {
       callError = String(e)

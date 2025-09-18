@@ -47,9 +47,6 @@ export default function ProfilePage() {
   // Mock voice options - in a real app, these would come from an API
   const voiceOptions = [
     { id: "voice-1", name: "Sarah - Professional" },
-    { id: "voice-2", name: "Alex - Friendly" },
-    { id: "voice-3", name: "Jordan - Calm" },
-    { id: "voice-4", name: "Taylor - Energetic" },
   ]
 
   React.useEffect(() => {
@@ -138,7 +135,7 @@ export default function ProfilePage() {
             <h2 className="text-base font-semibold">Voice Assistant</h2>
             <p className="text-sm text-muted-foreground">Choose your preferred voice for calls and interactions</p>
             <div className="mt-4 flex items-center gap-3">
-              <div className="flex-1">
+              {/* <div className="flex-1">
                 <Select value={selectedVoice} onValueChange={setSelectedVoice}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select a voice..." />
@@ -151,7 +148,7 @@ export default function ProfilePage() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+              </div> */}
               <Button
                 variant="outline"
                 size="sm"

@@ -272,3 +272,4 @@ export function LiveResponse({ issueId, className }: LiveResponseProps) {
     </div>
   )
 }
+

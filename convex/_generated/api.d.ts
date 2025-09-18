@@ -13,6 +13,7 @@ import type {
   FilterApi,
   FunctionReference,
 } from "convex/server";
+import type * as actions_voiceCloning from "../actions/voiceCloning.js";
 import type * as orchestration from "../orchestration.js";
 
 /**
@@ -24,6 +25,7 @@ import type * as orchestration from "../orchestration.js";
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  "actions/voiceCloning": typeof actions_voiceCloning;
   orchestration: typeof orchestration;
 }>;
 export declare const api: FilterApi<

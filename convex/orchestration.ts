@@ -146,9 +146,23 @@ export const appendCallEvent = mutation({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { issueId, callId, type, role, content, status }) => {
-		const createdAt = new Date().toISOString();
-		const id = await ctx.db.insert("callEvents", { issueId, callId, type, role, content, status, createdAt });
-		return { id, createdAt };
+			// Server-side dedupe: if an identical content payload already exists for this issue, skip insert.
+			if (typeof content === "string" && content.trim().length > 0) {
+				// Look back over recent events for this issue and identical content.
+				// We query by issueId and scan latest N to keep it cheap.
+				const recent = await ctx.db
+					.query("callEvents")
+					.withIndex("by_issue_createdAt", (q) => q.eq("issueId", issueId))
+					.order("desc")
+					.take(50);
+				const exists = recent.some((ev) => ev.content === content);
+				if (exists) {
+					return { id: undefined, createdAt: undefined } as any;
+				}
+			}
+			const createdAt = new Date().toISOString();
+			const id = await ctx.db.insert("callEvents", { issueId, callId, type, role, content, status, createdAt });
+			return { id, createdAt };
 	},
 });
 
@@ -186,6 +200,7 @@ export const saveSettings = mutation({
         birthdate: v.optional(v.string()),
         phone: v.optional(v.string()),
         timezone: v.optional(v.string()),
+		voiceId: v.optional(v.string()),
         selectedVoice: v.optional(v.string()),
     },
     handler: async (ctx, args) => {

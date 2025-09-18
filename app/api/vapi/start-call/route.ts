@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'VAPI assistant/phone IDs not configured' }, { status: 500 })
     }
 
-    const { issueId, context: providedContext } = await req.json()
+  const { issueId, context: providedContext } = await req.json()
 
     // Get context either from request or Convex latest for the issue
     let context: any = providedContext
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No routing context available to start call' }, { status: 400 })
     }
 
-    // Prepare dynamic system message
+  // Prepare dynamic system message
     const sysMsgCore = fillTemplate(SYSTEM_TEMPLATE, {
       callerName: context?.caller?.name,
       contactName: context?.contact?.name,
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
       availableWindows: Array.isArray(context?.availability?.preferredWindows) ? context.availability.preferredWindows.join(', ') : undefined,
       timezone: context?.availability?.timezone,
     })
-    const sysMsg = `${sysMsgCore}\n\n## FULL CONTEXT (verbatim JSON)\n${JSON.stringify(context, null, 2)}`
+  const sysMsg = `${sysMsgCore}\n\n## FULL CONTEXT (verbatim JSON)\n${JSON.stringify(context, null, 2)}`
     // Log exact system prompt for verification
     console.log('[VAPI system prompt]', sysMsg)
 
@@ -145,6 +145,19 @@ export async function POST(req: NextRequest) {
     }
     const dialNumber = normalizePhone(context?.contact?.phoneNumber) || '+14082101111'
 
+    // Fetch settings to determine voice override (transient assistant override)
+    let settings: any | null = null
+    if (convex) {
+      try {
+        settings = await convex.query(api.orchestration.getSettings, {})
+      } catch (e) {
+        console.warn('Failed fetching settings from Convex:', e)
+      }
+    }
+    const voiceOverride = settings?.voiceId
+      ? { provider: '11labs', voiceId: settings.voiceId as string }
+      : { provider: '11labs', voiceId: 'sarah' }
+
     const body = {
       assistantId: process.env.VAPI_PUBLIC_ASSISTANT_ID,
       phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID,
@@ -152,7 +165,7 @@ export async function POST(req: NextRequest) {
       metadata: issueId ? { issueId } : undefined,
       customer: {
         // Destination number in E.164
-        number: '+14082101111',
+        number: '+14085815324',
       },
       assistantOverrides: {
         // Webhook for server messages (takes precedence per assistant.server.url)
@@ -182,10 +195,7 @@ export async function POST(req: NextRequest) {
           ],
         },
         // Voice config
-        voice: {
-          provider: '11labs',
-          voiceId: 'sarah',
-        },
+        voice: voiceOverride,
         // Optional opening line
         firstMessage: "Hello, I'm calling to resolve a customer service issue. I have all the necessary account information and am authorized to handle this matter. How may I proceed?",
         // Transcriber config

@@ -12,13 +12,15 @@ import { Logo } from "@/components/logo"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { useQuery } from "convex/react"
+import { useAction, useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 
 export default function CreateVoicePage() {
   const { toast } = useToast()
   const router = useRouter()
+  // Load issues for sidebar and settings for default voice name
   const convexIssues = useQuery(api.orchestration.listIssuesWithMeta, {}) as any[] | undefined
+  const settings = useQuery(api.orchestration.getSettings, {}) as any | null | undefined
   const issues = React.useMemo(() => {
     if (!convexIssues) return [] as any[]
     return convexIssues.map((doc) => ({
@@ -43,9 +45,40 @@ export default function CreateVoicePage() {
   const [isRecording, setIsRecording] = React.useState(false)
   const [hasRecorded, setHasRecorded] = React.useState(false)
   const [mediaRecorder, setMediaRecorder] = React.useState<MediaRecorder | null>(null)
+  const chunksRef = React.useRef<Blob[]>([])
+  const [recordedB64, setRecordedB64] = React.useState<string>("")
+  const [recordedMime, setRecordedMime] = React.useState<string>("audio/webm")
+  const [recordedUrl, setRecordedUrl] = React.useState<string>("")
 
-  // Sample sentence for voice recording
-  const sampleSentence = "Hello, I'm your new voice assistant. I'm here to help you with whatever you need, whenever you need it."
+  // Convex hooks
+  const cloneVoice = useAction((api as any).actions.voiceCloning.cloneVoiceWithAudioData)
+  const saveSettings = useMutation(api.orchestration.saveSettings)
+
+  // Suggest a default voice name from saved profile (first + last name)
+  const suggestedVoiceName = React.useMemo(() => {
+    const name = [settings?.firstName, settings?.lastName].filter(Boolean).join(" ").trim()
+    return name || ""
+  }, [settings])
+  // If user hasn't typed a name and we have a suggestion, set it
+  React.useEffect(() => {
+    if (!voiceName && suggestedVoiceName) setVoiceName(suggestedVoiceName)
+  }, [suggestedVoiceName])
+
+  // Phonetically-rich script for better voice cloning (inspired by common TTS/voice datasets)
+  // Short guidance + 2 paragraphs cover varied phonemes, pacing, and dynamics
+  const sampleSentence = (
+    "Please read the following passage in your natural speaking voice. " +
+    "Speak clearly at a comfortable pace, with normal intonation and emotion. " +
+    "If you make a mistake, pause and continue, no need to start over.\n\n" +
+    "On a crisp morning, I checked the time and whispered, 'Ready to begin.' " +
+    "The quick brown fox jumps over the lazy dog, while bright geese zigzag above. " +
+    "Numbers and names roll off the tongue: one, two, three; April, July, November. " +
+    "Please schedule a call for Thursday at 3:45 PM, and confirm by email. " +
+    "I'd rather avoid delays, could we speed things up a bit?\n\n" +
+    "Thanks for your help today. I appreciate your patience and attention. " +
+    "Let me know if you need anything else from me—account numbers, dates, or details. " +
+    "I'll follow up soon to make sure everything is resolved."
+  )
 
   const voiceStyles = [
     { id: "professional", name: "Professional" },
@@ -80,30 +113,59 @@ export default function CreateVoicePage() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const recorder = new MediaRecorder(stream)
+      chunksRef.current = []
+      // Clear previous preview if any
+      if (recordedUrl) {
+        URL.revokeObjectURL(recordedUrl)
+        setRecordedUrl("")
+      }
       
       recorder.onstart = () => {
         setIsRecording(true)
+        setRecordedB64("")
       }
       
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         setIsRecording(false)
         setHasRecorded(true)
         // Stop all tracks to release the microphone
         stream.getTracks().forEach(track => track.stop())
+
+        // Build a single Blob from chunks and convert to base64
+        try {
+          const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+          // Create preview URL for inline playback
+          const url = URL.createObjectURL(blob)
+          setRecordedUrl(url)
+          setRecordedMime(blob.type || 'audio/webm')
+          // Convert to base64 without large spread to avoid call stack overflow
+          const reader = new FileReader()
+          reader.onloadend = () => {
+            try {
+              const result = reader.result as string
+              // result is a data URL like: data:audio/webm;base64,XXXX
+              const commaIdx = result.indexOf(',')
+              const base64 = commaIdx >= 0 ? result.slice(commaIdx + 1) : ""
+              setRecordedB64(base64)
+            } catch (e) {
+              console.error('Failed to parse base64 from data URL', e)
+            }
+          }
+          reader.readAsDataURL(blob)
+        } catch (e) {
+          console.error('Failed to process recorded audio', e)
+        }
       }
       
       recorder.ondataavailable = (event) => {
-        // In a real application, you would handle the audio data here
-        console.log("Audio data available:", event.data)
+        if (event.data && event.data.size > 0) {
+          chunksRef.current.push(event.data)
+        }
       }
       
       setMediaRecorder(recorder)
       recorder.start()
-      
-      toast({ 
-        title: "Recording started", 
-        description: "Speak the sentence clearly into your microphone." 
-      })
+      // Avoid toasts that obstruct the Create Voice button; UI already shows recording state
     } catch (err) {
       console.error("Error accessing microphone:", err)
       toast({ 
@@ -117,32 +179,33 @@ export default function CreateVoicePage() {
   const stopRecording = () => {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
       mediaRecorder.stop()
-      toast({ 
-        title: "Recording stopped", 
-        description: "Great! Your voice sample has been captured." 
-      })
+      // No toast here to keep the CTA unobstructed; we render a preview instead
     }
   }
 
   const onCreate = async () => {
-    if (!voiceName.trim()) {
-      toast({ title: "Error", description: "Please enter a voice name.", variant: "destructive" })
+    if (!recordedB64) {
+      toast({ title: "No recording", description: "Please record a sample before creating a voice.", variant: "destructive" })
       return
     }
 
     try {
       setIsCreating(true)
-      
-      // In a real application, this would call an API to create the voice
-      // For now, we'll just simulate the creation
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      toast({ 
-        title: "Voice Created", 
-        description: `Your custom voice "${voiceName}" has been created successfully.` 
+      // Call Convex action to clone the voice with recorded audio
+      const finalName = (voiceName?.trim() || suggestedVoiceName || "My Voice").slice(0, 50)
+      const res: any = await cloneVoice?.({ audioBase64: recordedB64, voiceName: finalName, mimeType: recordedMime })
+      if (!res || !res.success) {
+        throw new Error(res?.error || 'Failed to clone voice')
+      }
+
+      // Save voiceId in settings
+      await saveSettings({ voiceId: res.voiceId })
+
+      toast({
+        title: "Voice Created",
+        description: `Your custom voice "${res.voiceName || voiceName}" has been created and set.`
       })
-      
-      // Navigate back to profile page
+
       router.push("/profile")
     } catch (err: any) {
       toast({ 
@@ -226,11 +289,12 @@ export default function CreateVoicePage() {
                   </p>
                 </div>
                 
-                {/* Sample Sentence Display */}
-                <div className="bg-background/80 backdrop-blur-sm rounded-lg border p-8 lg:p-12 shadow-sm">
-                  <p className="text-lg lg:text-2xl leading-relaxed font-medium text-center max-w-4xl mx-auto">
-                    "{sampleSentence}"
-                  </p>
+                {/* Sample Script Display */}
+                <div className="bg-background/80 backdrop-blur-sm rounded-lg border p-6 lg:p-8 shadow-sm text-left">
+                  <p className="text-sm text-muted-foreground mb-3">Recommended script for best cloning quality (about 45–60 seconds):</p>
+                  <pre className="whitespace-pre-wrap text-base leading-relaxed font-medium">
+                    {sampleSentence}
+                  </pre>
                 </div>
                 
                 {/* Recording Controls */}
@@ -294,6 +358,13 @@ export default function CreateVoicePage() {
                       </>
                     )}
                   </div>
+                  {hasRecorded && recordedUrl && (
+                    <div className="w-full max-w-md mx-auto mt-4 text-left">
+                      <Label className="mb-2 block">Preview your recording</Label>
+                      <audio controls src={recordedUrl} className="w-full" />
+                      <p className="text-xs text-muted-foreground mt-2">If you’re not happy with it, click the mic to re-record.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
