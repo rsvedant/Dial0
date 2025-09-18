@@ -3,6 +3,8 @@ import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
 import { ConvexClientProvider } from './ConvexClientProvider'
+import { Toaster } from '@/components/ui/toaster'
+import { MobileTabBar } from '@/components/mobile-tabbar'
 
 export const metadata: Metadata = {
   title: 'Issues App',
@@ -49,7 +51,11 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
-        <ConvexClientProvider>{children}</ConvexClientProvider>
+        <ConvexClientProvider>
+          {children}
+          <MobileTabBar />
+          <Toaster />
+        </ConvexClientProvider>
       </body>
     </html>
   )

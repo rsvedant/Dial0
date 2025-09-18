@@ -4,9 +4,10 @@ import type { Issue } from "@/app/page"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { X, MessageCircle, Clock, CheckCircle2, User, Settings, Home } from "lucide-react"
+import { X, MessageCircle, Clock, CheckCircle2, User, Settings, Home, Inbox } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { IssueIcon } from "@/components/issue-icon"
+import { useRouter } from "next/navigation"
 
 interface IssuesSidebarProps {
   issues: Array<Issue & { messageCount?: number; lastMessage?: string }>
@@ -41,6 +42,7 @@ export function IssuesSidebar({
   onGoHome,
   onCloseSidebar,
 }: IssuesSidebarProps) {
+  const router = useRouter()
   return (
     <div className="h-full ios-sidebar flex flex-col animate-slide-in-left ios-no-bounce overflow-hidden">
       {/* iOS-style Header */}
@@ -54,9 +56,9 @@ export function IssuesSidebar({
               <h1 className="text-lg font-semibold text-sidebar-foreground">Issues</h1>
             </div>
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" className="h-12 w-12 p-0 ios-button icon-only large">
+              {/* <Button variant="ghost" size="sm" className="h-12 w-12 p-0 ios-button icon-only large">
                 <User className="h-8 w-8" />
-              </Button>
+              </Button> */}
               <Button variant="ghost" size="sm" onClick={onCloseSidebar} className="lg:hidden ios-button icon-only large h-12 w-12 p-0">
                 <X className="h-6 w-6" />
               </Button>
@@ -161,9 +163,25 @@ export function IssuesSidebar({
       {/* iOS-style Bottom Section */}
       <div className="mt-auto safe-bottom bg-sidebar/95 backdrop-blur-xl border-t border-sidebar-border/50">
         <div className="px-4 py-3">
-          <button className="w-full flex items-center gap-3 px-4 py-3 hover:bg-sidebar-accent/10 rounded-xl ios-transition ios-button min-h-[44px]">
+          <button
+            onClick={() => {
+              router.push("/activity")
+              onCloseSidebar()
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-sidebar-accent/10 rounded-xl ios-transition ios-button min-h-[44px] mb-2"
+          >
+            <Inbox className="h-5 w-5 text-sidebar-foreground" />
+            <span className="text-sm font-medium text-sidebar-foreground">Activity</span>
+          </button>
+          <button
+            onClick={() => {
+              router.push("/profile")
+              onCloseSidebar()
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-sidebar-accent/10 rounded-xl ios-transition ios-button min-h-[44px]"
+          >
             <Settings className="h-5 w-5 text-sidebar-foreground" />
-            <span className="text-sm font-medium text-sidebar-foreground">Settings</span>
+            <span className="text-sm font-medium text-sidebar-foreground">Profile</span>
           </button>
         </div>
       </div>

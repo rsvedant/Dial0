@@ -23,6 +23,7 @@ import {
   Info,
   Sparkles,
   Menu,
+  Camera,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useChat } from "@/hooks/use-chat"
@@ -33,6 +34,7 @@ interface ChatInterfaceProps {
   issue: Issue
   onUpdateIssue: (issue: Issue) => void
   onOpenMenu: () => void
+  knownContext?: any
 }
 
 interface ExtendedMessage extends Message {
@@ -79,7 +81,7 @@ const messageTypeConfig = {
   },
 }
 
-export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfaceProps) {
+export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }: ChatInterfaceProps) {
   const [newMessage, setNewMessage] = useState("")
   const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(new Set())
   const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -88,6 +90,7 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfac
   // Use the intelligent chat hook
   const { messages: chatMessages, isLoading, isIssueComplete, sendMessage: sendChatMessage } = useChat({
     issueId: issue.id,
+    knownContext,
     onIssueComplete: (issueDetails) => {
       console.log('Issue complete:', issueDetails)
       // Update issue status to resolved when complete
@@ -109,7 +112,10 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfac
   })
 
   // Use only chat messages from Convex to avoid duplication with static issue.messages
-  const enhancedMessages: ExtendedMessage[] = chatMessages.length === 0 ? [
+  // Hide any raw ISSUE_COMPLETE payloads in UI if they slip through
+  const cleanChatMessages = chatMessages.filter((m) => !/ISSUE_COMPLETE\s*:/i.test(m.content))
+
+  const enhancedMessages: ExtendedMessage[] = cleanChatMessages.length === 0 ? [
     {
       id: "welcome",
       content: "Hi! I'm here to help you with your issue. Could you please describe what problem you're experiencing?",
@@ -117,7 +123,7 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfac
       timestamp: new Date(),
       type: "text" as const,
     }
-  ] : chatMessages.map((msg) => ({ ...msg, type: msg.type || "text" as const }))
+  ] : cleanChatMessages.map((msg) => ({ ...msg, type: msg.type || "text" as const }))
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -176,38 +182,36 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfac
   const StatusIcon = statusConfig[issue.status].icon
 
   return (
-    <div className="flex flex-col h-full bg-background ios-no-bounce">
-      <div className="fixed top-0 right-0 left-0 lg:left-64 z-20 safe-area border-b border-border glass-effect animate-slide-down bg-background/95 backdrop-blur-sm ios-no-bounce s:mt-[-18]">
-        <div className="px-4 h-18">
-          {/* Top row - Issue info and icon */}
-          <div className="flex items-center gap-3 justify-between mb-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onOpenMenu}
-              className="lg:hidden h-20 ml-[-20] scale-150 p-0 ios-button icon-only large"
-            >
-              <Menu className="h-6 w-6" />
-            </Button>
-            <IssueIcon issueId={issue.id} size="md" />
-            <div className="flex-1 min-w-0">
-              <h2 className="text-base font-semibold text-foreground line-clamp-1 mb-1">{issue.title}</h2>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="font-mono">#{issue.id}</span>
-                <span>•</span>
-                <span>{issue.createdAt.toLocaleDateString()}</span>
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-background ios-no-bounce">
+      <ScrollArea className="flex-1 min-h-0 overflow-hidden" ref={scrollAreaRef}>
+        {/* Sticky in-viewport header to avoid iOS fixed-position issues */}
+        <div className="sticky top-0 z-30 safe-area bg-background/95 backdrop-blur-sm border-b border-border">
+          <div className="px-4 h-18">
+            <div className="flex items-center gap-3 justify-between mb-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onOpenMenu}
+                className="lg:hidden h-20 ml-[-20] scale-150 p-0 ios-button icon-only large"
+              >
+                <Menu className="h-6 w-6" />
+              </Button>
+              <IssueIcon issueId={issue.id} size="md" />
+              <div className="flex-1 min-w-0">
+                <h2 className="text-base font-semibold text-foreground line-clamp-1 mb-1">{issue.title}</h2>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="font-mono">#{String(issue.id).slice(0, 5)}</span>
+                  <span>•</span>
+                  <span>{issue.createdAt.toLocaleDateString()}</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
-        <div className="flex items-center justify-between w-full px-3 border-t border-border pt-3 h-8">
-            <TimelineIndicator status={issue.status} issueType={issue.id} />
-          </div>
-      </div>
-      
 
-  <ScrollArea className="flex-1 p-4 pt-24 pb-0 overflow-auto" ref={scrollAreaRef}>
-        <div className="space-y-4 max-w-4xl mx-auto">
+        <div className="p-4 pb-28 lg:pb-28">
+          <div className="space-y-4 max-w-4xl mx-auto">
+            <div className="h-2" aria-hidden />
           {enhancedMessages.map((message, index) => {
             const isUser = message.sender === "user"
             const messageConfig = messageTypeConfig[message.type || "text"]
@@ -319,39 +323,51 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu }: ChatInterfac
           )}
 
           <div ref={messagesEndRef} />
-        </div>
-      </ScrollArea>
-
-      {/* iOS-style Input Area */}
-      <div className="sticky bottom-0 z-20 safe-area border-t border-border glass-effect animate-fade-in-up bg-background/95 backdrop-blur-sm ios-no-bounce" style={{ paddingBottom: 'var(--kb, 0px)' }}>
-        <div className="flex gap-3 max-w-4xl mx-auto p-4">
-          <div className="flex-1 relative">
-            <Input
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type your message..."
-              className="h-12 text-sm px-4 pr-14 rounded-2xl border-border/50 focus:border-primary/50 ios-transition focus:scale-[1.01] shadow-sm bg-background/80 backdrop-blur-sm"
-              disabled={isLoading}
-            />
-            <Button
-              onClick={handleSendMessage}
-              disabled={!newMessage.trim() || isLoading}
-              className="absolute right-2 top-2 h-8 w-8 p-0 rounded-xl modern-hover animate-scale-in shadow-sm ios-button icon-only"
-              size="sm"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
           </div>
         </div>
-        {isLoading && (
-          <div className="flex justify-center pb-3">
-            <div className="text-xs text-muted-foreground animate-pulse bg-muted/50 px-3 py-1 rounded-full">
-              AI is analyzing your message...
+
+        {/* iOS-style Input Area inside viewport to avoid nested scroll */}
+        <div className="sticky bottom-0 z-30 safe-area border-t border-border glass-effect bg-background/95 backdrop-blur-sm ios-no-bounce" style={{ paddingBottom: 'var(--kb, 0px)' }}>
+          <div className="flex gap-3 max-w-4xl mx-auto p-4 pb-6 lg:pb-4">
+            {/* Camera Button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-12 w-12 p-0 rounded-2xl modern-hover ios-button icon-only flex-shrink-0"
+              disabled={isLoading}
+            >
+              <Camera className="h-5 w-5 text-muted-foreground" />
+            </Button>
+            
+            {/* Input with Send Button */}
+            <div className="flex-1 relative">
+              <Input
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Type your message..."
+                className="h-12 text-sm px-4 pr-14 rounded-2xl border-border/50 focus:border-primary/50 ios-transition focus:scale-[1.01] shadow-sm bg-background/80 backdrop-blur-sm"
+                disabled={isLoading}
+              />
+              <Button
+                onClick={handleSendMessage}
+                disabled={!newMessage.trim() || isLoading}
+                className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 p-0 rounded-xl modern-hover animate-scale-in shadow-sm ios-button icon-only flex items-center justify-center"
+                size="sm"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
             </div>
           </div>
-        )}
-      </div>
+          {isLoading && (
+            <div className="flex justify-center pb-3">
+              <div className="text-xs text-muted-foreground animate-pulse bg-muted/50 px-3 py-1 rounded-full">
+                AI is analyzing your message...
+              </div>
+            </div>
+          )}
+        </div>
+      </ScrollArea>
     </div>
   )
 }

@@ -17,14 +17,18 @@ interface HomepageProps {
 export function Homepage({ onCreateIssue, issueStats, onOpenMenu }: HomepageProps) {
   return (
     <div className="flex flex-col items-center justify-center h-full p-6 bg-background relative">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onOpenMenu}
-        className="absolute left-4 top-4 ios-button icon-only large"
-      >
-        <Menu className="h-6 w-6" />
-      </Button>
+      <div className="fixed top-0 left-0 right-0 z-30 flex items-center justify-between safe-area bg-background/95 backdrop-blur-sm ios-no-bounce ios-mobile-header px-4 lg:hidden">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onOpenMenu}
+          className="animate-scale-in h-12 w-12 p-0 ios-button icon-only large scale-150 lg:scale-100"
+        >
+          <Menu className="h-6 w-6" />
+        </Button>
+        <h1 className="font-semibold text-lg">Logo</h1>
+        <div className="w-12" />
+      </div>
       <div className="text-center max-w-md animate-fade-in-up">
         <div className="mb-8">
           <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-scale-in">

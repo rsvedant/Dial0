@@ -13,12 +13,14 @@ interface ChatMessage {
 interface UseChatOptions {
   issueId: string
   onIssueComplete?: (issueDetails: string) => void
+  knownContext?: any
 }
 
-export function useChat({ issueId, onIssueComplete }: UseChatOptions) {
+export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptions) {
   // Live messages from Convex
-  const convexMessages = useQuery(api.orchestration.listMessages, issueId ? { issueId } : undefined) as any[] | undefined
+  const convexMessages = useQuery(api.orchestration.listMessages, issueId ? { issueId } : "skip") as any[] | undefined
   const appendMessage = useMutation(api.orchestration.appendMessage)
+  const updateIssueStatus = useMutation(api.orchestration.updateIssueStatus)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isIssueComplete, setIsIssueComplete] = useState(false)
@@ -47,21 +49,34 @@ export function useChat({ issueId, onIssueComplete }: UseChatOptions) {
 
     // Persist user message first to Convex, UI reflects via live query
     await appendMessage({ issueId, role: 'user', content })
+    // Mark issue as in-progress on first user message in this session
+    try {
+      await updateIssueStatus({ id: issueId as any, status: 'in-progress' })
+    } catch {}
     setIsLoading(true)
 
     try {
-      // Send to Gemini API
+      // Build full message history and append the new user turn
+      const history = [...(messages || []), { role: 'user', content }]
+        .map((msg: any) => ({
+          role: msg.role ? (msg.role === 'user' ? 'user' : 'assistant') : (msg.sender === 'user' ? 'user' : 'assistant'),
+          content: (msg.content || '')
+        }))
+
+      // Send to Gemini intake API
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [...(messages || []), { role: 'user', content }].map(msg => ({
-            role: (msg as any).role ?? (msg.sender === 'user' ? 'user' : 'assistant'),
-            content: (msg as any).content ?? msg.content
-          })),
-          issueId
+          messages: history,
+          issueId,
+          knownContext: knownContext ?? {
+            user: {
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
+            },
+          },
         })
       })
 
@@ -75,29 +90,47 @@ export function useChat({ issueId, onIssueComplete }: UseChatOptions) {
       if (data.isComplete) {
         setIsIssueComplete(true)
 
-        // Extract issue details and send to Inkeep
-        const issueDetails = data.message.replace('ISSUE_COMPLETE: ', '')
+        // Use server-normalized issueDetails when available
+        const issueDetails: string = data.issueDetails || data.message.replace(/^.*ISSUE_COMPLETE\s*:\s*/i, '')
 
         // Persist a system acknowledgment message; UI updates via query
         await appendMessage({
           issueId,
           role: 'system',
-          content: 'Perfect! I have all the information I need. Building call context...'
+          content: 'Okay — we\'re working on resolving your issue by calling up the service now. I\'ll prepare the call context and keep you posted.'
         })
+
+        // Intake no longer shows grounded sources; routing step will include citations
 
         // Send to routing agent
         await handleInkeepIntegration(issueDetails)
 
+        try {
+          await updateIssueStatus({ id: issueId as any, status: 'resolved' })
+        } catch {}
         onIssueComplete?.(issueDetails)
       } else {
-        // Persist AI response
-        await appendMessage({ issueId, role: 'assistant', content: data.message })
+        // Don't persist empty responses
+        if (data.message && data.message.trim()) {
+          await appendMessage({ issueId, role: 'assistant', content: data.message })
+        } else {
+          console.error('Received empty message from API:', data)
+          await appendMessage({ issueId, role: 'system', content: 'I had trouble generating a response. Could you please try rephrasing your question?' })
+        }
+
+        // Chat intake no longer surfaces sources; routing will provide citations if needed
       }
 
     } catch (error) {
       console.error('Failed to send message:', error)
       
-      await appendMessage({ issueId, role: 'system', content: 'Sorry, I encountered an error. Please try again.' })
+      // Check if it's a 429 error
+      const errorMsg = String(error)
+      if (errorMsg.includes('429')) {
+        await appendMessage({ issueId, role: 'system', content: '⚠️ Rate limited by Gemini API. Please wait a moment before trying again.' })
+      } else {
+        await appendMessage({ issueId, role: 'system', content: 'Sorry, I encountered an error. Please try again.' })
+      }
     } finally {
       setIsLoading(false)
     }
@@ -114,6 +147,7 @@ export function useChat({ issueId, onIssueComplete }: UseChatOptions) {
           issueDetails,
           userQuery: messages[0]?.content || 'User issue',
           issueId,
+          knownContext,
         })
       })
 
@@ -132,6 +166,32 @@ export function useChat({ issueId, onIssueComplete }: UseChatOptions) {
             `• Contact: ${data.context?.contact?.name || 'Unknown'} (${data.context?.contact?.type || 'service'})` +
             `${data.context?.contact?.phoneNumber ? `\n• Phone: ${data.context.contact.phoneNumber}` : ''}`,
         })
+
+        // Show next steps (if any)
+        const nextSteps: string[] = data.context?.followUp?.nextSteps || []
+        if (Array.isArray(nextSteps) && nextSteps.length > 0) {
+          await appendMessage({
+            issueId,
+            role: 'system',
+            content: `Next steps:\n${nextSteps.map((s: string, i: number) => `${i + 1}. ${s}`).join('\n')}`,
+          })
+        }
+        const notify: string[] = data.context?.followUp?.notify || []
+        if (Array.isArray(notify) && notify.length > 0) {
+          await appendMessage({
+            issueId,
+            role: 'system',
+            content: `We will notify: ${notify.join(', ')}`,
+          })
+        }
+
+        if (data.settingsApplied && Array.isArray(data.settingsUsedKeys)) {
+          await appendMessage({
+            issueId,
+            role: 'system',
+            content: `Applied profile settings to call prep: ${data.settingsUsedKeys.join(', ')}`,
+          })
+        }
       }
     } catch (error) {
       console.error('Inkeep integration failed:', error)
@@ -151,4 +211,5 @@ export function useChat({ issueId, onIssueComplete }: UseChatOptions) {
     resetChat
   }
 }
+
 

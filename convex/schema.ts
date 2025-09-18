@@ -7,6 +7,16 @@ export default defineSchema({
 		status: v.union(v.literal("open"), v.literal("in-progress"), v.literal("resolved")),
 		createdAt: v.string(), // ISO timestamp
 	}).index("by_createdAt", ["createdAt"]),
+	settings: defineTable({
+		firstName: v.optional(v.string()),
+		lastName: v.optional(v.string()),
+		address: v.optional(v.string()),
+		email: v.optional(v.string()),
+		birthdate: v.optional(v.string()), // ISO date
+		phone: v.optional(v.string()),
+		timezone: v.optional(v.string()),
+		updatedAt: v.string(), // ISO timestamp
+	}).index("by_updatedAt", ["updatedAt"]),
 	orchestrationContexts: defineTable({
 		// Full structured context built by the routing agent
 		context: v.any(),

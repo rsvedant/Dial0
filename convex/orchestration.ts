@@ -135,3 +135,44 @@ export const listMessages = query({
 	},
 });
 
+// User settings
+export const getSettings = query({
+    args: {},
+    handler: async (ctx) => {
+        const rows = await ctx.db
+            .query("settings")
+            .withIndex("by_updatedAt")
+            .order("desc")
+            .take(1);
+        return rows[0] ?? null;
+    },
+});
+
+export const saveSettings = mutation({
+    args: {
+        firstName: v.optional(v.string()),
+        lastName: v.optional(v.string()),
+        address: v.optional(v.string()),
+        email: v.optional(v.string()),
+        birthdate: v.optional(v.string()),
+        phone: v.optional(v.string()),
+        timezone: v.optional(v.string()),
+    },
+    handler: async (ctx, args) => {
+        const updatedAt = new Date().toISOString();
+        // Either upsert single settings record by inserting a new version, or patch the latest
+        const latest = await ctx.db
+            .query("settings")
+            .withIndex("by_updatedAt")
+            .order("desc")
+            .take(1);
+        if (latest[0]) {
+            await ctx.db.patch(latest[0]._id, { ...args, updatedAt });
+            return { id: latest[0]._id, updatedAt };
+        } else {
+            const id = await ctx.db.insert("settings", { ...args, updatedAt });
+            return { id, updatedAt };
+        }
+    },
+});
+
