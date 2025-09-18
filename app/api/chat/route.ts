@@ -7,32 +7,28 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL
 const convex = convexUrl ? new ConvexHttpClient(convexUrl) : null
 
-// System prompt for agentic issue intake optimized for brevity and slot-filling
-const SYSTEM_PROMPT = `You are a proactive intake agent preparing for a real phone call to resolve the user's problem.
+// System prompt for lightweight, progressive intake
+const SYSTEM_PROMPT = `You are a helpful, lightweight intake agent preparing for a real phone call to resolve the user's problem.
 
-Principles:
-- Use the KNOWN CONTEXT and SETTINGS below as confirmed facts unless the user corrects them.
-- Ask ONLY for missing or ambiguous fields. Max 2 concise questions per turn (bullets ok).
-- Keep responses short (<= 4 sentences). Avoid long lists or copy-pasting content.
-- Do NOT perform research here; a separate routing agent will handle that.
+Core behavior:
+- Always respond to the user's last message directly. Never return an empty message.
+- Use KNOWN CONTEXT and SETTINGS as facts unless the user corrects them.
+- Build context progressively. If information is missing or ambiguous, ask at most ONE focused follow-up question.
+- Keep responses brief (<= 3 sentences or a short bullet list). No long-form content, no research.
 - Do NOT ask about fields already present in KNOWN CONTEXT or SETTINGS (e.g., name, phone, email, timezone, address).
+- If the user asks a general question, answer succinctly first; only then ask one clarifying intake question if needed.
 
-Required fields to collect (fill as applicable):
+Minimal fields to collect over time (when relevant):
 1) Problem summary
-2) Technical/context details (errors, repro steps, environment, IDs)
-3) Impact
-4) Desired outcome
-5) Urgency
-6) Contact to call (person/business/service) & phone/alt channels
-7) Identity you represent when calling (user name) & callback info (phone/email)
-8) Availability: timezone + preferred call windows
-9) Constraints/preferences (budget, compliance, tone, do/don't)
-10) Verification items to confirm during the call
+2) Key details (errors, repro steps, environment, IDs)
+3) Desired outcome (what the user wants to happen)
+4) Availability: timezone + preferred call windows (optional if not discussed yet)
 
-Output rule when complete:
-ISSUE_COMPLETE: {JSON summary of all collected fields}
+Completion signal:
+Only when you have a clear summary, some meaningful details, and the desired outcome, output a final line:
+ISSUE_COMPLETE: { JSON with summary, details, desiredOutcome, and any availability you have }
 
-Do not include any extra text before or after the ISSUE_COMPLETE line when you are done.`
+Otherwise, just reply naturally and keep it moving. Never output empty text.`
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -59,11 +55,14 @@ export async function POST(req: NextRequest) {
     }
 
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      // Use a widely available, reliable model
+      model: 'gemini-1.5-flash',
     })
 
-    // Use full conversation history as provided
-    const conversationHistory = (messages as ChatMessage[]).map((msg: ChatMessage) => ({
+    // Use conversation history EXCEPT the last user turn (we'll send that as the new message)
+    const msgs = (messages as ChatMessage[])
+    const historyWithoutLast = msgs.length > 0 ? msgs.slice(0, -1) : []
+    const conversationHistory = historyWithoutLast.map((msg: ChatMessage) => ({
       role: msg.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: msg.content }]
     }))
@@ -97,17 +96,18 @@ export async function POST(req: NextRequest) {
         },
         {
           role: 'model',
-          parts: [{ text: 'Acknowledged. I\'ll keep it brief and ask only for missing info.' }]
+          parts: [{ text: 'Understood. I\'ll respond directly, keep it short, and ask at most one focused question when needed.' }]
         },
         ...conversationHistory
       ],
       generationConfig: {
         maxOutputTokens: 512,
+        temperature: 0.3,
       } as any,
     })
 
     // Minimal retry/backoff on 429 rate limit
-    const lastUserContent = (messages[messages.length - 1]?.content || '')
+  const lastUserContent = (msgs[msgs.length - 1]?.content || '')
     const sendWithRetry = async () => {
       try {
         console.log('Sending to Gemini:', lastUserContent)
@@ -123,27 +123,67 @@ export async function POST(req: NextRequest) {
         throw err
       }
     }
-    const result = await sendWithRetry()
+  let result = await sendWithRetry()
     
     // Robust response extraction
     let response = ''
+    let finishedReason: string | undefined
+    let safety: any
     try {
       response = result.response.text() || ''
+      finishedReason = (result as any)?.response?.candidates?.[0]?.finishReason
+      safety = (result as any)?.response?.candidates?.[0]?.safetyRatings
     } catch (e) {
       console.error('Failed to extract response text:', e)
+    }
+    // If empty, try reconstructing from candidates
+    if (!response || response.trim() === '') {
       const candidates = (result as any)?.response?.candidates
-      console.log('Raw candidates:', JSON.stringify(candidates, null, 2))
-      
-      if (candidates && candidates[0] && candidates[0].content && candidates[0].content.parts) {
-        response = candidates[0].content.parts.map((p: any) => p.text || '').join('') || ''
+      if (candidates && candidates.length > 0) {
+        const texts: string[] = []
+        for (const c of candidates) {
+          finishedReason = finishedReason || c?.finishReason
+          safety = safety || c?.safetyRatings
+          const parts = c?.content?.parts || []
+          for (const p of parts) {
+            if (typeof p?.text === 'string') texts.push(p.text)
+          }
+        }
+        response = texts.join('').trim()
       }
     }
-    
-    console.log('Raw Gemini response:', response)
-    
+    console.log('Raw Gemini response:', response, 'finishReason:', finishedReason, 'safety:', safety)
+    // If still empty, try a single gentle retry prompting a short reply
+    if (!response || response.trim() === '') {
+      console.warn('Empty model response; retrying once with a brief nudge...')
+      try {
+        await new Promise((r) => setTimeout(r, 300))
+        const retry = await chat.sendMessage(`${lastUserContent}\n\nPlease reply briefly (one or two sentences).`)
+        response = retry.response.text() || ''
+        if (!response || response.trim() === '') {
+          const rcands = (retry as any)?.response?.candidates
+          if (rcands && rcands.length > 0) {
+            const texts: string[] = []
+            for (const c of rcands) {
+              const parts = c?.content?.parts || []
+              for (const p of parts) {
+                if (typeof p?.text === 'string') texts.push(p.text)
+              }
+            }
+            response = texts.join('').trim()
+          }
+        }
+      } catch (retryErr) {
+        console.error('Retry after empty response failed:', retryErr)
+      }
+    }
+    // If still empty, provide a helpful message based on finishReason/safety
     if (!response || response.trim() === '') {
       console.error('EMPTY RESPONSE from Gemini')
-      response = 'I encountered an issue generating a response. Could you please rephrase your question?'
+      const safetyNote = finishedReason === 'SAFETY'
+        ? ' I may have been blocked by a safety filter. Please rephrase or add a bit more detail.'
+        : ''
+      response = `I had trouble generating a reply just now.${safetyNote} Could you rephrase or provide a little more detail?`
     }
 
     // Extract grounding metadata (if any)

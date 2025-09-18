@@ -36,5 +36,18 @@ export default defineSchema({
 	})
 		.index("by_issue", ["issueId"]) 
 		.index("by_issue_createdAt", ["issueId", "createdAt"]),
+	// Live call events and transcripts from Vapi webhooks
+	callEvents: defineTable({
+		issueId: v.string(),
+		callId: v.optional(v.string()),
+		type: v.string(), // e.g., 'status' | 'transcript' | 'lifecycle'
+		role: v.optional(v.string()), // 'assistant' | 'user' when transcript
+		content: v.optional(v.string()), // text payload
+		status: v.optional(v.string()),
+		createdAt: v.string(), // ISO timestamp
+	})
+		.index("by_issue_createdAt", ["issueId", "createdAt"]) 
+		.index("by_issue", ["issueId"]) 
+		.index("by_call", ["callId"]),
 });
 

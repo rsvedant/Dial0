@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { IssuesSidebar } from "@/components/issues-sidebar"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
+import { Logo } from "@/components/logo"
 
 type ActivityItem = {
   id: string
@@ -114,7 +115,7 @@ export default function ActivityPage() {
         >
           <Menu className="h-6 w-6" />
         </Button>
-        <h1 className="font-semibold text-lg truncate max-w-[60%]">Logo</h1>
+        <Logo width={120} height={30} />
         <div className="w-12" />
       </div>
 

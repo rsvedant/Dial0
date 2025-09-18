@@ -19,6 +19,7 @@ interface UseChatOptions {
 export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptions) {
   // Live messages from Convex
   const convexMessages = useQuery(api.orchestration.listMessages, issueId ? { issueId } : "skip") as any[] | undefined
+  const callEvents = useQuery(api.orchestration.listCallEvents, issueId ? { issueId } : "skip") as any[] | undefined
   const appendMessage = useMutation(api.orchestration.appendMessage)
   const updateIssueStatus = useMutation(api.orchestration.updateIssueStatus)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -36,8 +37,52 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
       timestamp: new Date(row.createdAt),
       type: row.role === 'system' ? 'system' : 'text',
     }))
-    setMessages(mapped)
-  }, [convexMessages])
+    // Elevate a single collapsible "call bubble" from call events, if any exist
+    let withCallBubble = mapped
+    if (callEvents && callEvents.length > 0) {
+      // Extract monitor URLs if present
+      const monitorEv = callEvents.find(ev => ev.type === 'monitor')
+      let monitor: { listenUrl?: string; controlUrl?: string } | undefined
+      try { monitor = monitorEv?.content ? JSON.parse(monitorEv.content) : undefined } catch {}
+      const transcriptPairs: { user: string; system: string }[] = []
+      let pendingUser: string | null = null
+      // Collapse events into paired turns (rough approximation)
+      for (const ev of callEvents) {
+        if (ev.type === 'transcript' && ev.content) {
+          if ((ev.role || '').toLowerCase() === 'user') {
+            // flush any previous unmatched user turn
+            if (pendingUser) transcriptPairs.push({ user: pendingUser, system: '' })
+            pendingUser = ev.content
+          } else {
+            if (pendingUser) {
+              transcriptPairs.push({ user: pendingUser, system: ev.content })
+              pendingUser = null
+            } else {
+              transcriptPairs.push({ user: '', system: ev.content })
+            }
+          }
+        }
+      }
+      if (pendingUser) transcriptPairs.push({ user: pendingUser, system: '' })
+
+      const latestEventTime = new Date(callEvents[callEvents.length - 1].createdAt)
+      const bubble: ChatMessage = {
+        id: 'call-bubble-' + issueId,
+        content: 'Live call transcript',
+        sender: 'system',
+        timestamp: latestEventTime,
+        type: 'transcript',
+      } as any
+      ;(bubble as any).transcript = transcriptPairs
+      if (monitor) {
+        (bubble as any).monitor = monitor
+      }
+
+      // Insert/replace a single bubble at the end
+      withCallBubble = [...mapped.filter(m => m.id !== bubble.id), bubble]
+    }
+    setMessages(withCallBubble)
+  }, [convexMessages, callEvents, issueId])
 
   // Smoothly keep scroll pinned to bottom when new messages arrive
   useEffect(() => {
@@ -191,6 +236,36 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
             role: 'system',
             content: `Applied profile settings to call prep: ${data.settingsUsedKeys.join(', ')}`,
           })
+        }
+
+        // Auto-start the voice call with Vapi using dynamic context
+        try {
+          const startResp = await fetch('/api/vapi/start-call', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ issueId, context: data.context })
+          })
+          const startJson = await startResp.json().catch(() => ({}))
+          if (!startResp.ok) {
+            console.error('Failed to start Vapi call:', startJson)
+            await appendMessage({
+              issueId,
+              role: 'system',
+              content: `⚠️ Could not start the phone call automatically: ${startJson?.error || 'unknown error'}`,
+            })
+          } else {
+            await appendMessage({
+              issueId,
+              role: 'system',
+              content: '📞 Call initiated. I\'ll update you here with progress and outcome.',
+            })
+            if (data.callInitiated === false && data.callError) {
+              await appendMessage({ issueId, role: 'system', content: `FYI: Inkeep attempted auto-call but failed: ${data.callError}` })
+            }
+          }
+        } catch (err) {
+          console.error('Error while starting Vapi call:', err)
+          await appendMessage({ issueId, role: 'system', content: '⚠️ Error starting the call. You can try again shortly.' })
         }
       }
     } catch (error) {

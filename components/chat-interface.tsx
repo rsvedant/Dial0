@@ -209,7 +209,7 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
           </div>
         </div>
 
-        <div className="p-4 pb-28 lg:pb-28">
+        <div className="p-4 pb-28 lg:pb-28" style={{minHeight: 'calc(100vh - 100px)'}} >
           <div className="space-y-4 max-w-4xl mx-auto">
             <div className="h-2" aria-hidden />
           {enhancedMessages.map((message, index) => {

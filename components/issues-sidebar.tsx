@@ -8,6 +8,7 @@ import { X, MessageCircle, Clock, CheckCircle2, User, Settings, Home, Inbox } fr
 import { cn } from "@/lib/utils"
 import { IssueIcon } from "@/components/issue-icon"
 import { useRouter } from "next/navigation"
+import { Logo } from "@/components/logo"
 
 interface IssuesSidebarProps {
   issues: Array<Issue & { messageCount?: number; lastMessage?: string }>
@@ -49,20 +50,12 @@ export function IssuesSidebar({
       <div className="safe-top bg-sidebar/95 backdrop-blur-xl border-b border-sidebar-border/50">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                <MessageCircle className="h-4 w-4 text-primary-foreground" />
-              </div>
-              <h1 className="text-lg font-semibold text-sidebar-foreground">Issues</h1>
+            <div className="flex-1 flex items-center justify-center">
+              <Logo width={160} height={40} className="max-w-full" />
             </div>
-            <div className="flex items-center gap-3">
-              {/* <Button variant="ghost" size="sm" className="h-12 w-12 p-0 ios-button icon-only large">
-                <User className="h-8 w-8" />
-              </Button> */}
-              <Button variant="ghost" size="sm" onClick={onCloseSidebar} className="lg:hidden ios-button icon-only large h-12 w-12 p-0">
-                <X className="h-6 w-6" />
-              </Button>
-            </div>
+            <Button variant="ghost" size="sm" onClick={onCloseSidebar} className="lg:hidden ios-button icon-only large h-12 w-12 p-0 flex-shrink-0">
+              <X className="h-6 w-6" />
+            </Button>
           </div>
           
           {/* iOS-style Home Button */}

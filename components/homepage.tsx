@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { Plus, MessageSquare, Clock, CheckCircle2, Menu } from "lucide-react"
+import { Logo } from "@/components/logo"
 
 interface HomepageProps {
   onCreateIssue: () => void
@@ -26,7 +27,7 @@ export function Homepage({ onCreateIssue, issueStats, onOpenMenu }: HomepageProp
         >
           <Menu className="h-6 w-6" />
         </Button>
-        <h1 className="font-semibold text-lg">Logo</h1>
+        <Logo width={120} height={30} />
         <div className="w-12" />
       </div>
       <div className="text-center max-w-md animate-fade-in-up">

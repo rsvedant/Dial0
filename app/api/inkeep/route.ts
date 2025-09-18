@@ -79,8 +79,111 @@ Known context (JSON, may be partial):\n${knownContext ? JSON.stringify(knownCont
 
 Build the JSON now. Output JSON only.`
 
-    const result = await model.generateContent(prompt)
-    const text = result.response.text() || ''
+    // Enforce JSON output and schema using Gemini's supported Schema shape
+    // Note: Do not use JSON Schema-only keywords like additionalProperties or type unions.
+    const responseSchema: any = {
+      type: 'object',
+      properties: {
+        callPurpose: { type: 'string' },
+        contact: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', enum: ['person', 'business', 'service'] },
+            name: { type: 'string' },
+            phoneNumber: { type: 'string' },
+            altChannels: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['type', 'name', 'phoneNumber', 'altChannels'],
+        },
+        issue: {
+          type: 'object',
+          properties: {
+            category: { type: 'string' },
+            summary: { type: 'string' },
+            details: { type: 'string' },
+            urgency: { type: 'string', enum: ['immediate', 'same-day', 'next-business-day', 'when-available'] },
+            desiredOutcome: { type: 'string' },
+          },
+          required: ['category', 'summary', 'details', 'urgency', 'desiredOutcome'],
+        },
+        constraints: { type: 'array', items: { type: 'string' } },
+        verification: { type: 'array', items: { type: 'string' } },
+        availability: {
+          type: 'object',
+          properties: {
+            timezone: { type: 'string' },
+            preferredWindows: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['timezone', 'preferredWindows'],
+        },
+        caller: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            callback: { type: 'string' },
+            identifiers: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['name', 'callback', 'identifiers'],
+        },
+        followUp: {
+          type: 'object',
+          properties: {
+            nextSteps: { type: 'array', items: { type: 'string' } },
+            notify: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['nextSteps', 'notify'],
+        },
+        notesForAgent: { type: 'string' },
+      },
+      required: [
+        'callPurpose',
+        'contact',
+        'issue',
+        'constraints',
+        'verification',
+        'availability',
+        'caller',
+        'followUp',
+        'notesForAgent',
+      ],
+    }
+
+    let result: any
+    try {
+      result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema,
+        } as any,
+      })
+    } catch (schemaErr) {
+      console.warn('Gemini rejected responseSchema, retrying without schema:', schemaErr)
+      // Fallback without responseSchema to keep flow alive
+      result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+        } as any,
+      })
+    }
+    let raw = ''
+    try {
+      raw = result.response.text() || ''
+    } catch {
+      raw = ''
+    }
+    // Some models wrap JSON in fences; extract the JSON object substring
+    const extractJson = (t: string) => {
+      if (!t) return ''
+      const fenced = t.match(/```(?:json)?\s*([\s\S]*?)```/i)
+      if (fenced && fenced[1]) return fenced[1].trim()
+      const start = t.indexOf('{')
+      const end = t.lastIndexOf('}')
+      if (start !== -1 && end !== -1 && end > start) return t.slice(start, end + 1)
+      return t
+    }
+    const text = extractJson(raw)
     
     // No grounding metadata since search tools are disabled
     const sources: string[] = []
@@ -105,9 +208,11 @@ Build the JSON now. Output JSON only.`
         availability: { timezone: null, preferredWindows: [] },
         caller: { name: null, callback: null, identifiers: [] },
         followUp: { nextSteps: [], notify: [] },
-        notesForAgent: text || 'No additional notes'
+        notesForAgent: (raw && raw !== text ? raw : text) || 'No additional notes'
       }
     }
+
+    // Defensive cleanup: if model returned serialized JSON inside strings for summary/details, keep as-is string values.
 
     // Zod validation for routing context
     const RoutingContextSchema = z.object({
@@ -205,6 +310,28 @@ Build the JSON now. Output JSON only.`
     // Log on server for verification
     console.log('Inkeep routing context built:', { id: persisted.id, createdAt: persisted.createdAt, context, settingsApplied: appliedKeys })
 
+    // Immediately start the voice call with Vapi using the dynamic context
+    let call: any = null
+    let callInitiated = false
+    let callError: any = null
+    try {
+      const origin = new URL(req.url).origin
+      const startResp = await fetch(`${origin}/api/vapi/start-call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issueId, context })
+      })
+      call = await startResp.json().catch(() => ({}))
+      callInitiated = startResp.ok
+      if (!startResp.ok) {
+        callError = call?.error || 'Failed to start Vapi call'
+        console.error('Vapi start-call failed from Inkeep route:', call)
+      }
+    } catch (e) {
+      callError = String(e)
+      console.error('Error calling Vapi start-call from Inkeep route:', e)
+    }
+
     // Return to client; client will also log to console
     return NextResponse.json({
       success: true,
@@ -213,6 +340,9 @@ Build the JSON now. Output JSON only.`
       settingsApplied: appliedKeys.length > 0,
       settingsUsedKeys: appliedKeys,
       convex: { id: persisted.id, createdAt: persisted.createdAt },
+      callInitiated,
+      call,
+      callError,
     })
 
   } catch (error) {

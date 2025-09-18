@@ -135,6 +135,35 @@ export const listMessages = query({
 	},
 });
 
+// Call events storage (transcripts, status updates, lifecycle)
+export const appendCallEvent = mutation({
+	args: {
+		issueId: v.string(),
+		callId: v.optional(v.string()),
+		type: v.string(),
+		role: v.optional(v.string()),
+		content: v.optional(v.string()),
+		status: v.optional(v.string()),
+	},
+	handler: async (ctx, { issueId, callId, type, role, content, status }) => {
+		const createdAt = new Date().toISOString();
+		const id = await ctx.db.insert("callEvents", { issueId, callId, type, role, content, status, createdAt });
+		return { id, createdAt };
+	},
+});
+
+export const listCallEvents = query({
+	args: { issueId: v.string() },
+	handler: async (ctx, { issueId }) => {
+		const rows = await ctx.db
+			.query("callEvents")
+			.withIndex("by_issue_createdAt", (q) => q.eq("issueId", issueId))
+			.order("asc")
+			.collect();
+		return rows;
+	},
+});
+
 // User settings
 export const getSettings = query({
     args: {},

@@ -11,6 +11,7 @@ import { api } from "@/convex/_generated/api"
 import { useRouter } from "next/navigation"
 import { Menu } from "lucide-react"
 import { IssuesSidebar } from "@/components/issues-sidebar"
+import { Logo } from "@/components/logo"
 
 export default function ProfilePage() {
   const browserTimezone = React.useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
@@ -85,7 +86,7 @@ export default function ProfilePage() {
         >
           <Menu className="h-6 w-6" />
         </Button>
-        <h1 className="font-semibold text-lg truncate max-w-[60%]">Logo</h1>
+        <Logo width={120} height={30} />
         <div className="w-12" />
       </div>
 
