@@ -35,9 +35,9 @@ export function Homepage({ onCreateIssue, issueStats, onOpenMenu }: HomepageProp
           <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-scale-in">
             <MessageSquare className="h-8 w-8 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground mb-2">Issue Tracker</h1>
+          <h1 className="text-2xl font-bold text-foreground mb-2">DialZero</h1>
           <p className="text-muted-foreground text-sm leading-relaxed">
-            Create and manage your issues with our intelligent chat interface
+            Automating customer service calls. Never call customer service again.
           </p>
         </div>
 

@@ -15,6 +15,30 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useAction, useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 
+// Extend Navigator interface for legacy getUserMedia support
+interface NavigatorWithUserMedia extends Navigator {
+  getUserMedia?: (
+    constraints: MediaStreamConstraints,
+    successCallback: (stream: MediaStream) => void,
+    errorCallback: (error: any) => void
+  ) => void;
+  webkitGetUserMedia?: (
+    constraints: MediaStreamConstraints,
+    successCallback: (stream: MediaStream) => void,
+    errorCallback: (error: any) => void
+  ) => void;
+  mozGetUserMedia?: (
+    constraints: MediaStreamConstraints,
+    successCallback: (stream: MediaStream) => void,
+    errorCallback: (error: any) => void
+  ) => void;
+  msGetUserMedia?: (
+    constraints: MediaStreamConstraints,
+    successCallback: (stream: MediaStream) => void,
+    errorCallback: (error: any) => void
+  ) => void;
+}
+
 export default function CreateVoicePage() {
   const { toast } = useToast()
   const router = useRouter()
@@ -49,6 +73,9 @@ export default function CreateVoicePage() {
   const [recordedB64, setRecordedB64] = React.useState<string>("")
   const [recordedMime, setRecordedMime] = React.useState<string>("audio/webm")
   const [recordedUrl, setRecordedUrl] = React.useState<string>("")
+  const [micPermissionState, setMicPermissionState] = React.useState<'unknown' | 'granted' | 'denied' | 'prompt'>('unknown')
+  const [isCheckingPermissions, setIsCheckingPermissions] = React.useState(false)
+  const [isMobileDevice, setIsMobileDevice] = React.useState(false)
 
   // Convex hooks
   const cloneVoice = useAction((api as any).actions.voiceCloning.cloneVoiceWithAudioData)
@@ -63,6 +90,139 @@ export default function CreateVoicePage() {
   React.useEffect(() => {
     if (!voiceName && suggestedVoiceName) setVoiceName(suggestedVoiceName)
   }, [suggestedVoiceName])
+
+  // Check microphone permissions and detect mobile on component mount
+  React.useEffect(() => {
+    // Detect mobile device
+    const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent) || 
+                     window.innerWidth <= 768
+    setIsMobileDevice(isMobile)
+    
+    checkMicrophonePermissions()
+  }, [])
+
+  const checkMicrophonePermissions = async () => {
+    const nav = navigator as NavigatorWithUserMedia
+    // Check if mediaDevices is available (required for microphone access)
+    if (!navigator.mediaDevices && !nav.getUserMedia) {
+      console.log('Media devices not supported in this browser')
+      setMicPermissionState('unknown')
+      return
+    }
+
+    // Check if permissions API is available
+    if (!navigator.permissions) {
+      console.log('Permissions API not supported, will check on first recording attempt')
+      setMicPermissionState('unknown')
+      return
+    }
+
+    try {
+      setIsCheckingPermissions(true)
+      const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+      setMicPermissionState(permission.state as 'granted' | 'denied' | 'prompt')
+      
+      // Listen for permission changes
+      permission.onchange = () => {
+        setMicPermissionState(permission.state as 'granted' | 'denied' | 'prompt')
+      }
+    } catch (error) {
+      console.log('Permission API query failed, will check on first recording attempt')
+      setMicPermissionState('unknown')
+    } finally {
+      setIsCheckingPermissions(false)
+    }
+  }
+
+  // Helper function to get user media with fallback support
+  const getUserMediaWithFallback = (constraints: MediaStreamConstraints): Promise<MediaStream> => {
+    // Modern browsers
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      return navigator.mediaDevices.getUserMedia(constraints)
+    }
+    
+    // Fallback for older browsers
+    const nav = navigator as NavigatorWithUserMedia
+    const getUserMedia = nav.getUserMedia || 
+                        nav.webkitGetUserMedia || 
+                        nav.mozGetUserMedia || 
+                        nav.msGetUserMedia
+
+    if (!getUserMedia) {
+      return Promise.reject(new Error('getUserMedia is not supported in this browser'))
+    }
+
+    return new Promise((resolve, reject) => {
+      getUserMedia.call(navigator, constraints, resolve, reject)
+    })
+  }
+
+  const requestMicrophonePermission = async (): Promise<boolean> => {
+    try {
+      setIsCheckingPermissions(true)
+      
+      // Check if any form of getUserMedia is available
+      const nav = navigator as NavigatorWithUserMedia
+      if (!navigator.mediaDevices && !nav.getUserMedia && 
+          !nav.webkitGetUserMedia && !nav.mozGetUserMedia && 
+          !nav.msGetUserMedia) {
+        toast({
+          title: "Browser Not Supported",
+          description: "Your browser doesn't support microphone access. Please use a modern browser like Chrome, Firefox, or Safari.",
+          variant: "destructive"
+        })
+        return false
+      }
+
+      const stream = await getUserMediaWithFallback({ audio: true })
+      // Stop the stream immediately as we just wanted to check permissions
+      stream.getTracks().forEach(track => track.stop())
+      setMicPermissionState('granted')
+      return true
+    } catch (error: any) {
+      console.error('Microphone permission error:', error)
+      
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        setMicPermissionState('denied')
+        const mobileInstructions = isMobileDevice 
+          ? " On mobile, make sure to tap 'Allow' when prompted, and check your browser's site permissions if needed."
+          : ""
+        toast({
+          title: "Microphone Access Denied",
+          description: `Please allow microphone access in your browser settings to record your voice sample.${mobileInstructions}`,
+          variant: "destructive"
+        })
+      } else if (error.name === 'NotFoundError') {
+        toast({
+          title: "No Microphone Found",
+          description: isMobileDevice 
+            ? "Please make sure your device has a microphone and try again."
+            : "Please connect a microphone to record your voice sample.",
+          variant: "destructive"
+        })
+      } else if (error.message.includes('not supported')) {
+        toast({
+          title: "Browser Not Supported",
+          description: isMobileDevice 
+            ? "Please use a modern mobile browser like Chrome, Firefox, or Safari to access the microphone."
+            : "Your browser doesn't support microphone access. Please use a modern browser like Chrome, Firefox, or Safari.",
+          variant: "destructive"
+        })
+      } else {
+        toast({
+          title: "Microphone Error",
+          description: isMobileDevice 
+            ? "Unable to access your microphone. Please refresh the page and try again, making sure to tap 'Allow' when prompted."
+            : "Unable to access your microphone. Please check your browser settings and try again.",
+          variant: "destructive"
+        })
+      }
+      return false
+    } finally {
+      setIsCheckingPermissions(false)
+    }
+  }
 
   // Phonetically-rich script for better voice cloning (inspired by common TTS/voice datasets)
   // Short guidance + 2 paragraphs cover varied phonemes, pacing, and dynamics
@@ -110,10 +270,38 @@ export default function CreateVoicePage() {
   ]
 
   const startRecording = async () => {
+    // Check permissions first if we haven't already or if they were denied
+    if (micPermissionState === 'denied') {
+      toast({
+        title: "Microphone Access Required",
+        description: "Please enable microphone access in your browser settings and refresh the page.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (micPermissionState === 'unknown' || micPermissionState === 'prompt') {
+      const hasPermission = await requestMicrophonePermission()
+      if (!hasPermission) {
+        return
+      }
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
+      const stream = await getUserMediaWithFallback({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100
+        }
+      })
+      
+      const recorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      })
+      
       chunksRef.current = []
+      
       // Clear previous preview if any
       if (recordedUrl) {
         URL.revokeObjectURL(recordedUrl)
@@ -133,7 +321,7 @@ export default function CreateVoicePage() {
 
         // Build a single Blob from chunks and convert to base64
         try {
-          const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+          const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
           // Create preview URL for inline playback
           const url = URL.createObjectURL(blob)
           setRecordedUrl(url)
@@ -149,11 +337,21 @@ export default function CreateVoicePage() {
               setRecordedB64(base64)
             } catch (e) {
               console.error('Failed to parse base64 from data URL', e)
+              toast({
+                title: "Processing Error",
+                description: "Failed to process the recorded audio. Please try again.",
+                variant: "destructive"
+              })
             }
           }
           reader.readAsDataURL(blob)
         } catch (e) {
           console.error('Failed to process recorded audio', e)
+          toast({
+            title: "Recording Error",
+            description: "Failed to process the recorded audio. Please try again.",
+            variant: "destructive"
+          })
         }
       }
       
@@ -163,16 +361,42 @@ export default function CreateVoicePage() {
         }
       }
       
+      recorder.onerror = (event) => {
+        console.error('MediaRecorder error:', event)
+        toast({
+          title: "Recording Error",
+          description: "An error occurred while recording. Please try again.",
+          variant: "destructive"
+        })
+        setIsRecording(false)
+        stream.getTracks().forEach(track => track.stop())
+      }
+      
       setMediaRecorder(recorder)
       recorder.start()
-      // Avoid toasts that obstruct the Create Voice button; UI already shows recording state
-    } catch (err) {
-      console.error("Error accessing microphone:", err)
-      toast({ 
-        title: "Microphone Error", 
-        description: "Unable to access your microphone. Please check permissions.", 
-        variant: "destructive" 
-      })
+    } catch (err: any) {
+      console.error("Error starting recording:", err)
+      
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setMicPermissionState('denied')
+        toast({
+          title: "Microphone Access Denied",
+          description: "Please allow microphone access and try again. You may need to refresh the page.",
+          variant: "destructive"
+        })
+      } else if (err.name === 'NotFoundError') {
+        toast({
+          title: "No Microphone Found",
+          description: "Please connect a microphone and try again.",
+          variant: "destructive"
+        })
+      } else {
+        toast({
+          title: "Recording Error",
+          description: "Unable to start recording. Please check your microphone and try again.",
+          variant: "destructive"
+        })
+      }
     }
   }
 
@@ -312,10 +536,12 @@ export default function CreateVoicePage() {
                       size="lg"
                       variant={isRecording ? "destructive" : hasRecorded ? "secondary" : "default"}
                       onClick={isRecording ? stopRecording : startRecording}
+                      disabled={isCheckingPermissions || micPermissionState === 'denied'}
                       className={`
                         relative h-20 w-20 rounded-full p-0 transition-all duration-300 shadow-lg hover:shadow-xl
                         ${isRecording ? 'scale-110' : 'hover:scale-105'}
                         ${hasRecorded ? 'ring-2 ring-green-500 ring-offset-2' : ''}
+                        ${micPermissionState === 'denied' ? 'opacity-50 cursor-not-allowed' : ''}
                       `}
                     >
                       {isRecording ? (
@@ -329,7 +555,16 @@ export default function CreateVoicePage() {
                   </div>
                   
                   <div className="text-center space-y-2">
-                    {isRecording ? (
+                    {isCheckingPermissions ? (
+                      <>
+                        <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                          🔍 Checking microphone permissions...
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Please allow access when prompted
+                        </p>
+                      </>
+                    ) : isRecording ? (
                       <>
                         <p className="text-sm font-medium text-red-600 dark:text-red-400">
                           🔴 Recording in progress...
@@ -347,22 +582,94 @@ export default function CreateVoicePage() {
                           Click to record again if needed
                         </p>
                       </>
+                    ) : micPermissionState === 'denied' ? (
+                      <>
+                        <p className="text-sm font-medium text-red-600 dark:text-red-400">
+                          🚫 Microphone access denied
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Please enable microphone access in browser settings
+                        </p>
+                      </>
+                    ) : micPermissionState === 'granted' ? (
+                      <>
+                        <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                          🎤 Ready to record
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Click to start recording your voice sample
+                        </p>
+                      </>
                     ) : (
                       <>
                         <p className="text-sm font-medium">
-                          Click to start recording
+                          {isMobileDevice ? "Tap to start recording" : "Click to start recording"}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Make sure your microphone is connected
+                          {isMobileDevice 
+                            ? "You'll be asked to allow microphone access - make sure to tap 'Allow'"
+                            : "You'll be asked for microphone permission"
+                          }
                         </p>
                       </>
                     )}
                   </div>
+                  {micPermissionState === 'denied' && (
+                    <div className="w-full max-w-lg mx-auto mt-6">
+                      <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                        <div className="flex">
+                          <div className="flex-shrink-0">
+                            <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                          <div className="ml-3">
+                            <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
+                              Microphone Access Required
+                            </h3>
+                            <div className="mt-2 text-sm text-red-700 dark:text-red-300">
+                              <p className="mb-2">To create a custom voice, we need access to your microphone. Please:</p>
+                              {isMobileDevice ? (
+                                <ol className="list-decimal list-inside space-y-1 text-xs">
+                                  <li>Refresh this page and tap the record button again</li>
+                                  <li>When prompted, tap "Allow" to grant microphone access</li>
+                                  <li>If you don't see a prompt, check your browser's site settings</li>
+                                  <li>In Chrome Mobile: Tap the lock icon next to the URL → Microphone → Allow</li>
+                                  <li>In Safari Mobile: Settings → Safari → Camera & Microphone Access</li>
+                                  <li>Make sure your device's microphone isn't being used by another app</li>
+                                </ol>
+                              ) : (
+                                <ol className="list-decimal list-inside space-y-1 text-xs">
+                                  <li>Look for the microphone icon in your browser's address bar</li>
+                                  <li>Click on it and select "Allow" for microphone access</li>
+                                  <li>If you don't see the icon, refresh this page and try again</li>
+                                  <li>In Chrome: Settings → Privacy and security → Site Settings → Microphone</li>
+                                  <li>In Firefox: Settings → Privacy & Security → Permissions → Microphone</li>
+                                </ol>
+                              )}
+                              <div className="mt-3">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={checkMicrophonePermissions}
+                                  disabled={isCheckingPermissions}
+                                  className="text-xs"
+                                >
+                                  {isCheckingPermissions ? "Checking..." : "Try Again"}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   {hasRecorded && recordedUrl && (
                     <div className="w-full max-w-md mx-auto mt-4 text-left">
                       <Label className="mb-2 block">Preview your recording</Label>
                       <audio controls src={recordedUrl} className="w-full" />
-                      <p className="text-xs text-muted-foreground mt-2">If you’re not happy with it, click the mic to re-record.</p>
+                      <p className="text-xs text-muted-foreground mt-2">If you're not happy with it, click the mic to re-record.</p>
                     </div>
                   )}
                 </div>
