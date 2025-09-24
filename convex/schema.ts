@@ -3,11 +3,16 @@ import { v } from "convex/values";
 
 export default defineSchema({
 	issues: defineTable({
+		// Owning Better Auth user id
+		userId: v.string(),
 		title: v.string(),
 		status: v.union(v.literal("open"), v.literal("in-progress"), v.literal("resolved")),
 		createdAt: v.string(), // ISO timestamp
-	}).index("by_createdAt", ["createdAt"]),
+	})
+		.index("by_createdAt", ["createdAt"]) // legacy / wide queries (optional retain)
+		.index("by_userId_createdAt", ["userId", "createdAt"]),
 	settings: defineTable({
+		userId: v.string(),
 		firstName: v.optional(v.string()),
 		lastName: v.optional(v.string()),
 		address: v.optional(v.string()),
@@ -18,8 +23,12 @@ export default defineSchema({
 		voiceId: v.optional(v.string()),
 		selectedVoice: v.optional(v.string()),
 		updatedAt: v.string(), // ISO timestamp
-	}).index("by_updatedAt", ["updatedAt"]),
+	})
+		.index("by_updatedAt", ["updatedAt"]) // existing global index
+		.index("by_userId", ["userId"]) // point lookup per user
+		.index("by_userId_updatedAt", ["userId", "updatedAt"]),
 	orchestrationContexts: defineTable({
+		userId: v.string(),
 		// Full structured context built by the routing agent
 		context: v.any(),
 		// Free-form summary text
@@ -29,7 +38,9 @@ export default defineSchema({
 		source: v.optional(v.string()),
 		// ISO timestamp for ordering
 		createdAt: v.string(),
-	}).index("by_createdAt", ["createdAt"]),
+	})
+		.index("by_createdAt", ["createdAt"]) // legacy
+		.index("by_userId_createdAt", ["userId", "createdAt"]),
 	chatMessages: defineTable({
 		issueId: v.string(),
 		role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
@@ -40,6 +51,7 @@ export default defineSchema({
 		.index("by_issue_createdAt", ["issueId", "createdAt"]),
 	// Live call events and transcripts from Vapi webhooks
 	callEvents: defineTable({
+		userId: v.string(),
 		issueId: v.string(),
 		callId: v.optional(v.string()),
 		type: v.string(), // e.g., 'status' | 'transcript' | 'lifecycle'
@@ -50,6 +62,7 @@ export default defineSchema({
 	})
 		.index("by_issue_createdAt", ["issueId", "createdAt"]) 
 		.index("by_issue", ["issueId"]) 
-		.index("by_call", ["callId"]),
+		.index("by_call", ["callId"])
+		.index("by_userId_createdAt", ["userId", "createdAt"]),
 });
 

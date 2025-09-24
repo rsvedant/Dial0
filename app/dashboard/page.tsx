@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { useSearchParams } from "next/navigation"
+import { useAuthenticate } from "@daveyplate/better-auth-ui"
+import { AuthDebug } from "@/components/auth-debug"
 
 export interface Issue {
   id: string
@@ -114,6 +116,8 @@ export default function DashboardPage() {
     }
   }, [updateIssueStatusMutation, issues])
 
+  useAuthenticate()
+
   return (
     <div className="flex h-screen bg-background ios-no-bounce overflow-hidden">
       {sidebarOpen && (
@@ -152,6 +156,7 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+      <AuthDebug />
     </div>
   )
 }

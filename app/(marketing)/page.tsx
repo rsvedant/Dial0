@@ -2,6 +2,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { BackgroundBeams } from "@/components/magicui/background-beams"
 import { Spotlight } from "@/components/magicui/spotlight"
+import { AuthDebug } from "@/components/auth-debug"
 
 export default function LandingPage() {
   return (
@@ -299,6 +300,7 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+      <AuthDebug/>
     </main>
   )
 }

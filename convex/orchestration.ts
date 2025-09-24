@@ -1,5 +1,19 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { authComponent } from "./auth";
+
+async function requireUserId(ctx: any): Promise<string> {
+	// Try Better Auth user first
+	const user: any = await authComponent.getAuthUser(ctx);
+	if (user) {
+		const id = user.userId ?? user._id; // some versions expose userId, others only _id
+		if (typeof id === "string" && id.length > 0) return id;
+	}
+	// Fallback to raw identity (subject is Better Auth user id per migration docs)
+	const identity = await ctx.auth.getUserIdentity();
+	if (identity?.subject) return identity.subject;
+	throw new Error("Not authenticated");
+}
 
 // Issues CRUD (Convex tutorial style)
 export const createIssue = mutation({
@@ -7,8 +21,10 @@ export const createIssue = mutation({
 		title: v.string(),
 	},
 	handler: async (ctx, { title }) => {
+		const userId = await requireUserId(ctx);
 		const createdAt = new Date().toISOString();
 		const id = await ctx.db.insert("issues", {
+			userId,
 			title,
 			status: "open",
 			createdAt,
@@ -20,19 +36,21 @@ export const createIssue = mutation({
 export const listIssues = query({
 	args: {},
 	handler: async (ctx) => {
-		const rows = await ctx.db
+		const userId = await requireUserId(ctx);
+		return await ctx.db
 			.query("issues")
-			.withIndex("by_createdAt")
+			.withIndex("by_userId_createdAt", (q) => q.eq("userId", userId))
 			.order("desc")
 			.collect();
-		return rows;
 	},
 });
 
 export const getIssue = query({
 	args: { id: v.id("issues") },
 	handler: async (ctx, { id }) => {
+		const userId = await requireUserId(ctx);
 		const issue = await ctx.db.get(id);
+		if (!issue || issue.userId !== userId) return null;
 		return issue;
 	},
 });
@@ -40,6 +58,9 @@ export const getIssue = query({
 export const updateIssueStatus = mutation({
 	args: { id: v.id("issues"), status: v.union(v.literal("open"), v.literal("in-progress"), v.literal("resolved")) },
 	handler: async (ctx, { id, status }) => {
+		const userId = await requireUserId(ctx);
+		const existing = await ctx.db.get(id);
+		if (!existing || existing.userId !== userId) throw new Error("Issue not found");
 		await ctx.db.patch(id, { status });
 		return { id, status };
 	},
@@ -48,9 +69,10 @@ export const updateIssueStatus = mutation({
 export const listIssuesWithMeta = query({
 	args: {},
 	handler: async (ctx) => {
+		const userId = await requireUserId(ctx);
 		const issues = await ctx.db
 			.query("issues")
-			.withIndex("by_createdAt")
+			.withIndex("by_userId_createdAt", (q) => q.eq("userId", userId))
 			.order("desc")
 			.collect();
 		const enriched = await Promise.all(
@@ -85,8 +107,10 @@ export const setContext = mutation({
 		source: v.optional(v.string()),
 	},
 	handler: async (ctx, { context, summary, issueId, source }) => {
+		const userId = await requireUserId(ctx);
 		const createdAt = new Date().toISOString();
 		const id = await ctx.db.insert("orchestrationContexts", {
+			userId,
 			context,
 			summary,
 			issueId,
@@ -100,9 +124,10 @@ export const setContext = mutation({
 export const latestContext = query({
 	args: {},
 	handler: async (ctx) => {
+		const userId = await requireUserId(ctx);
 		const docs = await ctx.db
 			.query("orchestrationContexts")
-			.withIndex("by_createdAt")
+			.withIndex("by_userId_createdAt", (q) => q.eq("userId", userId))
 			.order("desc")
 			.take(1);
 		return docs[0] ?? null;
@@ -117,6 +142,10 @@ export const appendMessage = mutation({
 		content: v.string(),
 	},
 	handler: async (ctx, { issueId, role, content }) => {
+		// Validate ownership of issue
+		const userId = await requireUserId(ctx);
+		const issue = await ctx.db.get(issueId as any) as any;
+		if (!issue || (issue.userId && issue.userId !== userId)) throw new Error("Issue not found");
 		const createdAt = new Date().toISOString();
 		const id = await ctx.db.insert("chatMessages", { issueId, role, content, createdAt });
 		return { id, createdAt };
@@ -126,6 +155,9 @@ export const appendMessage = mutation({
 export const listMessages = query({
 	args: { issueId: v.string() },
 	handler: async (ctx, { issueId }) => {
+		const userId = await requireUserId(ctx);
+		const issue = await ctx.db.get(issueId as any) as any;
+		if (!issue || ((issue as any).userId && (issue as any).userId !== userId)) return [];
 		const rows = await ctx.db
 			.query("chatMessages")
 			.withIndex("by_issue_createdAt", (q) => q.eq("issueId", issueId))
@@ -146,6 +178,9 @@ export const appendCallEvent = mutation({
 		status: v.optional(v.string()),
 	},
 	handler: async (ctx, { issueId, callId, type, role, content, status }) => {
+		const userId = await requireUserId(ctx);
+		const issue = await ctx.db.get(issueId as any) as any;
+		if (!issue || (issue.userId && issue.userId !== userId)) throw new Error("Issue not found");
 			// Server-side dedupe: if an identical content payload already exists for this issue, skip insert.
 			if (typeof content === "string" && content.trim().length > 0) {
 				// Look back over recent events for this issue and identical content.
@@ -161,7 +196,7 @@ export const appendCallEvent = mutation({
 				}
 			}
 			const createdAt = new Date().toISOString();
-			const id = await ctx.db.insert("callEvents", { issueId, callId, type, role, content, status, createdAt });
+			const id = await ctx.db.insert("callEvents", { userId, issueId, callId, type, role, content, status, createdAt });
 			return { id, createdAt };
 	},
 });
@@ -169,6 +204,9 @@ export const appendCallEvent = mutation({
 export const listCallEvents = query({
 	args: { issueId: v.string() },
 	handler: async (ctx, { issueId }) => {
+		const userId = await requireUserId(ctx);
+		const issue = await ctx.db.get(issueId as any);
+		if (!issue || ((issue as any).userId && (issue as any).userId !== userId)) return [];
 		const rows = await ctx.db
 			.query("callEvents")
 			.withIndex("by_issue_createdAt", (q) => q.eq("issueId", issueId))
@@ -182,12 +220,13 @@ export const listCallEvents = query({
 export const getSettings = query({
     args: {},
     handler: async (ctx) => {
-        const rows = await ctx.db
-            .query("settings")
-            .withIndex("by_updatedAt")
-            .order("desc")
-            .take(1);
-        return rows[0] ?? null;
+		const userId = await requireUserId(ctx);
+		const docs = await ctx.db
+			.query("settings")
+			.withIndex("by_userId_updatedAt", (q) => q.eq("userId", userId))
+			.order("desc")
+			.take(1);
+		return docs[0] ?? null;
     },
 });
 
@@ -204,20 +243,21 @@ export const saveSettings = mutation({
         selectedVoice: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
+		const userId = await requireUserId(ctx);
         const updatedAt = new Date().toISOString();
-        // Either upsert single settings record by inserting a new version, or patch the latest
-        const latest = await ctx.db
-            .query("settings")
-            .withIndex("by_updatedAt")
-            .order("desc")
-            .take(1);
-        if (latest[0]) {
-            await ctx.db.patch(latest[0]._id, { ...args, updatedAt });
-            return { id: latest[0]._id, updatedAt };
-        } else {
-            const id = await ctx.db.insert("settings", { ...args, updatedAt });
-            return { id, updatedAt };
-        }
+		// Upsert for this user: always insert new version (audit) or patch latest? We'll patch latest for simplicity.
+		const latest = await ctx.db
+			.query("settings")
+			.withIndex("by_userId_updatedAt", (q) => q.eq("userId", userId))
+			.order("desc")
+			.take(1);
+		if (latest[0]) {
+			await ctx.db.patch(latest[0]._id, { ...args, updatedAt });
+			return { id: latest[0]._id, updatedAt };
+		} else {
+			const id = await ctx.db.insert("settings", { userId, ...args, updatedAt });
+			return { id, updatedAt };
+		}
     },
 });
 
