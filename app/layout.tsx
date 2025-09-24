@@ -5,20 +5,21 @@ import './globals.css'
 import { ConvexClientProvider } from './ConvexClientProvider'
 import { Toaster } from '@/components/ui/toaster'
 import { MobileTabBar } from '@/components/mobile-tabbar'
+import { Providers } from './providers'
+import { ConditionalMobileTabbar } from '@/components/conditional-mobile-tabbar'
 
 export const metadata: Metadata = {
-  title: 'Issues App',
+  title: 'Dial0',
   description: 'Native-feeling iOS PWA for issue management',
-  generator: 'v0.app',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Issues App',
+    title: 'Dial0',
   },
   other: {
     'apple-mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-status-bar-style': 'black-translucent',
-    'apple-mobile-web-app-title': 'Issues App',
+    'apple-mobile-web-app-title': 'Dial0',
     'mobile-web-app-capable': 'yes',
   },
 }
@@ -51,11 +52,14 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
-        <ConvexClientProvider>
-          {children}
-          <MobileTabBar />
-          <Toaster />
-        </ConvexClientProvider>
+        <Providers>
+          <ConvexClientProvider>
+            {children}
+            {/* Hide mobile tab bar on the marketing landing page */}
+            <ConditionalMobileTabbar />
+            <Toaster />
+          </ConvexClientProvider>
+        </Providers>
       </body>
     </html>
   )

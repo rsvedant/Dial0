@@ -194,6 +194,168 @@
   animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* === Marketing Landing Enhancements === */
+@keyframes blobFloat {
+  0% { transform: translate3d(0,0,0) scale(1); }
+  33% { transform: translate3d(25px,-40px,0) scale(1.05); }
+  66% { transform: translate3d(-30px,25px,0) scale(0.95); }
+  100% { transform: translate3d(0,0,0) scale(1); }
+}
+
+@keyframes subtlePulse {
+  0%,100% { opacity: 0.55; }
+  50% { opacity: 0.85; }
+}
+
+.grid-pattern {
+  position: relative;
+}
+.grid-pattern:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to right, oklch(0.92 0 0 / 0.4) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(to bottom, oklch(0.92 0 0 / 0.4) 1px, transparent 1px) 0 0 / 32px 32px;
+  mask: radial-gradient(circle at center, black 30%, transparent 70%);
+  pointer-events: none;
+  opacity: .35;
+}
+.dark .grid-pattern:before {
+  background:
+    linear-gradient(to right, oklch(0.18 0 0 / 0.45) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(to bottom, oklch(0.18 0 0 / 0.45) 1px, transparent 1px) 0 0 / 32px 32px;
+}
+
+.hero-gradient {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 30% 30%, oklch(0.85 0 0 / .9), transparent 55%),
+    radial-gradient(circle at 70% 60%, oklch(0.95 0 0 / .9), transparent 60%);
+  mix-blend-mode: plus-lighter;
+  pointer-events: none;
+  opacity: .7;
+}
+.dark .hero-gradient {
+  background:
+    radial-gradient(circle at 30% 30%, oklch(0.35 0 0 / .65), transparent 55%),
+    radial-gradient(circle at 70% 60%, oklch(0.15 0 0 / .65), transparent 60%);
+  opacity: .9;
+}
+
+.hero-blob {
+  position: absolute;
+  width: 480px;
+  height: 480px;
+  top: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: radial-gradient(circle at 30% 30%, oklch(0.92 0 0 / .9), oklch(0.96 0 0 / .2));
+  filter: blur(60px);
+  animation: blobFloat 22s ease-in-out infinite;
+  opacity: .55;
+  pointer-events: none;
+}
+.dark .hero-blob {
+  background: radial-gradient(circle at 30% 30%, oklch(0.28 0 0 / .9), oklch(0.05 0 0 / .2));
+  opacity: .5;
+}
+
+.card-frost {
+  background: oklch(1 0 0 / .75);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+.dark .card-frost {
+  background: oklch(0.08 0 0 / .65);
+}
+
+.glow-ring {
+  position: relative;
+}
+.glow-ring:before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg, oklch(0.85 0 0 / .9), oklch(0.65 0 0 / .4));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: .6;
+  animation: subtlePulse 6s ease-in-out infinite;
+}
+.dark .glow-ring:before {
+  background: linear-gradient(120deg, oklch(0.68 0 0 / .9), oklch(0.32 0 0 / .4));
+}
+
+/* Utility helpers */
+.text-gradient {
+  background: linear-gradient(90deg, oklch(0.15 0 0), oklch(0.45 0 0));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.dark .text-gradient {
+  background: linear-gradient(90deg, oklch(0.95 0 0), oklch(0.75 0 0));
+}
+
+/* --- Advanced Marketing Hero Effects --- */
+@keyframes beamSlide {
+  0% { transform: translateX(-30%) translateY(var(--y,0)) rotate(var(--r,6deg)); opacity: 0; }
+  15% { opacity: .7; }
+  85% { opacity: .7; }
+  100% { transform: translateX(130%) translateY(var(--y,0)) rotate(var(--r,6deg)); opacity: 0; }
+}
+@keyframes floatSoft {
+  0% { transform: translate3d(0,0,0) scale(1); }
+  50% { transform: translate3d(0,-18px,0) scale(1.02); }
+  100% { transform: translate3d(0,0,0) scale(1); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.hero-mesh {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 30% 20%, oklch(0.95 0 0 / .8), transparent 60%),
+    radial-gradient(circle at 75% 40%, oklch(0.9 0 0 / .6), transparent 65%),
+    linear-gradient(115deg, oklch(1 0 0), oklch(0.97 0 0));
+  mix-blend-mode: plus-lighter;
+  pointer-events: none;
+  opacity: .9;
+}
+.dark .hero-mesh {
+  background:
+    radial-gradient(circle at 30% 25%, oklch(0.35 0 0 / .55), transparent 60%),
+    radial-gradient(circle at 70% 40%, oklch(0.22 0 0 / .55), transparent 65%),
+    linear-gradient(115deg, oklch(0.07 0 0), oklch(0.12 0 0));
+  opacity: .75;
+}
+.beam-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.beam { position: absolute; top: 10%; left: -40%; width: 55%; height: 2px; background: linear-gradient(90deg, transparent, oklch(0.75 0 0 / .5), transparent); filter: blur(2px); animation: beamSlide var(--d,9s) linear infinite; }
+.dark .beam { background: linear-gradient(90deg, transparent, oklch(0.85 0 0 / .4), transparent); }
+.beam:nth-child(2){ top:38%; --y:0; --d:11s; --r:-4deg; }
+.beam:nth-child(3){ top:62%; --y:0; --d:13s; --r:3deg; }
+.beam:nth-child(4){ top:78%; --y:0; --d:10s; --r:-6deg; }
+.hero-orb {
+  position: absolute; width: 560px; height: 560px; top: 55%; left: 50%; transform: translate(-50%,-50%); border-radius: 50%; background: radial-gradient(circle at 35% 35%, oklch(0.98 0 0 / .9), oklch(0.95 0 0 / .1)); filter: blur(70px); animation: floatSoft 18s ease-in-out infinite; opacity: .65; pointer-events: none;
+}
+.dark .hero-orb { background: radial-gradient(circle at 35% 35%, oklch(0.25 0 0 / .7), oklch(0.1 0 0 / .1)); opacity:.55; }
+.noise-overlay { position:absolute; inset:0; pointer-events:none; background-image: repeating-conic-gradient(from 0deg, rgba(0,0,0,.04) 0deg 15deg, transparent 15deg 30deg); mix-blend-mode: multiply; opacity:.25; filter: contrast(160%) brightness(1.05); }
+.dark .noise-overlay { background-image: repeating-conic-gradient(from 0deg, rgba(255,255,255,.06) 0deg 15deg, transparent 15deg 30deg); mix-blend-mode: screen; opacity:.18; }
+.video-shell { position:relative; background: oklch(1 0 0 / .6); backdrop-filter: blur(22px) saturate(1.15); border:1px solid oklch(0.9 0 0 / .7); }
+.dark .video-shell { background: oklch(0.08 0 0 / .5); border-color: oklch(0.22 0 0 / .6); }
+.video-shell:before { content:""; position:absolute; inset:-1px; padding:1px; border-radius:inherit; background: linear-gradient(120deg, oklch(0.85 0 0 / .9), oklch(0.65 0 0 / .3)); -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; opacity:.55; pointer-events:none; }
+.dark .video-shell:before { background: linear-gradient(120deg, oklch(0.65 0 0 / .9), oklch(0.35 0 0 / .3)); }
+.shimmer { background: linear-gradient(110deg, oklch(0.96 0 0 / .4) 0%, oklch(0.98 0 0 / .9) 20%, oklch(0.96 0 0 / .4) 40%); background-size:200% 100%; animation: shimmer 4s ease-in-out infinite; }
+.dark .shimmer { background: linear-gradient(110deg, oklch(0.12 0 0 / .4) 0%, oklch(0.18 0 0 / .9) 20%, oklch(0.12 0 0 / .4) 40%); }
+
 /* Added modern hover and focus states */
 .modern-hover {
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
