@@ -10,6 +10,7 @@ import { api } from "@/convex/_generated/api"
 import { useSearchParams } from "next/navigation"
 import { useAuthenticate } from "@daveyplate/better-auth-ui"
 import { AuthDebug } from "@/components/auth-debug"
+import { SettingsBootstrap } from "@/components/settings-bootstrap"
 
 export interface Issue {
   id: string
@@ -157,6 +158,7 @@ export default function DashboardPage() {
         </div>
       </div>
       <AuthDebug />
+      <SettingsBootstrap />
     </div>
   )
 }

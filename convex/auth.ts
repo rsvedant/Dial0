@@ -14,53 +14,80 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
     user: {
       onCreate: async (ctx, authUser: any) => {
         const updatedAt = new Date().toISOString();
-        const userId = (authUser._id as unknown as string);
-        // Insert initial settings doc if not exists
-        const existing = await ctx.db
-          .query("settings")
-          .withIndex("by_userId", q => q.eq("userId", userId))
-          .take(1);
-        if (!existing[0]) {
-          const name: string | undefined = authUser.name;
-          let firstName: string | undefined = undefined;
-            let lastName: string | undefined = undefined;
-          if (name) {
-            const parts = name.split(" ");
-            firstName = parts[0];
-            lastName = parts.slice(1).join(" ") || undefined;
+        try {
+          const userId = (authUser._id || authUser.id || authUser.userId) as string;
+          console.log("[BetterAuth:onCreate] user keys=", Object.keys(authUser), "resolvedUserId=", userId);
+          if (!userId) {
+            console.warn("[BetterAuth:onCreate] No userId resolved; aborting settings insert");
+            return;
           }
-          await ctx.db.insert("settings", {
-            userId,
-            email: authUser.email || undefined,
-            firstName,
-            lastName,
-            updatedAt,
-          });
+          const existing = await ctx.db
+            .query("settings")
+            .withIndex("by_userId", q => q.eq("userId", userId))
+            .take(1);
+          console.log("[BetterAuth:onCreate] existing settings count=", existing.length);
+          if (!existing[0]) {
+            const name: string | undefined = authUser.name;
+            let firstName: string | undefined = undefined;
+            let lastName: string | undefined = undefined;
+            if (name) {
+              const parts = name.split(" ");
+              firstName = parts[0];
+              lastName = parts.slice(1).join(" ") || undefined;
+            }
+            const doc = {
+              userId,
+              email: authUser.email || undefined,
+              firstName,
+              lastName,
+              address: undefined,
+              birthdate: undefined,
+              phone: undefined,
+              timezone: undefined,
+              voiceId: undefined,
+              selectedVoice: undefined,
+              updatedAt,
+            };
+            const insertedId = await ctx.db.insert("settings", doc as any);
+            console.log("[BetterAuth:onCreate] inserted settings id=", insertedId, doc);
+          }
+        } catch (e) {
+          console.error("[BetterAuth:onCreate] failed:", e);
         }
       },
       onUpdate: async (ctx, oldUser: any, newUser: any) => {
-        const userId = (newUser._id as unknown as string);
-        const latest = await ctx.db
-          .query("settings")
-          .withIndex("by_userId", q => q.eq("userId", userId))
-          .order("desc")
-          .take(1);
-        if (latest[0]) {
-          const updatedAt = new Date().toISOString();
-          const name: string | undefined = newUser.name;
-          let firstName: string | undefined = undefined;
-          let lastName: string | undefined = undefined;
-          if (name) {
-            const parts = name.split(" ");
-            firstName = parts[0];
-            lastName = parts.slice(1).join(" ") || undefined;
+        try {
+          const userId = (newUser._id || newUser.id || newUser.userId) as string;
+          console.log("[BetterAuth:onUpdate] user keys=", Object.keys(newUser), "resolvedUserId=", userId);
+          if (!userId) return;
+          const latest = await ctx.db
+            .query("settings")
+            .withIndex("by_userId", q => q.eq("userId", userId))
+            .order("desc")
+            .take(1);
+          console.log("[BetterAuth:onUpdate] latest settings rows=", latest.length);
+          if (latest[0]) {
+            const updatedAt = new Date().toISOString();
+            const name: string | undefined = newUser.name;
+            let firstName: string | undefined = undefined;
+            let lastName: string | undefined = undefined;
+            if (name) {
+              const parts = name.split(" ");
+              firstName = parts[0];
+              lastName = parts.slice(1).join(" ") || undefined;
+            }
+            await ctx.db.patch(latest[0]._id, {
+              email: newUser.email || undefined,
+              firstName,
+              lastName,
+              updatedAt,
+            });
+            console.log("[BetterAuth:onUpdate] patched settings id=", latest[0]._id);
+          } else {
+            console.warn("[BetterAuth:onUpdate] No settings row to patch for user, skipping");
           }
-          await ctx.db.patch(latest[0]._id, {
-            email: newUser.email || undefined,
-            firstName,
-            lastName,
-            updatedAt,
-          });
+        } catch (e) {
+          console.error("[BetterAuth:onUpdate] failed:", e);
         }
       },
     },

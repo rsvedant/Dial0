@@ -12,7 +12,7 @@ export default async function AuthPage({ params }: { params: Promise<{ authView:
 
     return (
         <main className="container flex grow flex-col items-center justify-center self-center p-4 md:p-6">
-            <AuthView path={authView} />
+            <AuthView path={authView} redirectTo="/dashboard"/>
         </main>
     )
 }

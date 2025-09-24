@@ -8,6 +8,7 @@ export function AuthDebug({ collapse = true }: { collapse?: boolean }) {
     return <div className="text-xs text-muted-foreground">Auth debug: loading...</div>;
   }
   const payload = JSON.stringify(data, null, 2);
+  if (process.env.NODE_ENV !== 'development') return null;
   return (
     <div className="fixed bottom-2 right-2 z-50 max-w-sm">
       <details open={!collapse} className="rounded border bg-background shadow">
