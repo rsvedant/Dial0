@@ -20,6 +20,8 @@ export function Providers({ children }: { children: ReactNode }) {
                 router.refresh()
             }}
             Link={Link as any}
+            passkey
+            twoFactor={["otp", "totp"]} // TODO: add otp function
         >
             {children}
         </AuthUIProvider>

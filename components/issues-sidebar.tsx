@@ -1,17 +1,16 @@
 "use client"
 
-import type { Issue } from "@/app/page"
+import type { IssueListItem, IssueStatus } from "@/types/issue"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Badge } from "@/components/ui/badge"
-import { X, MessageCircle, Clock, CheckCircle2, User, Settings, Home, Inbox } from "lucide-react"
+import { X, MessageCircle, Clock, CheckCircle2, Settings, Shield, Home, Inbox } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { IssueIcon } from "@/components/issue-icon"
 import { useRouter } from "next/navigation"
 import { Logo } from "@/components/logo"
 
 interface IssuesSidebarProps {
-  issues: Array<Issue & { messageCount?: number; lastMessage?: string }>
+  issues: IssueListItem[]
   selectedIssueId: string | null
   onSelectIssue: (issueId: string) => void
   onGoHome: () => void
@@ -74,7 +73,7 @@ export function IssuesSidebar({
         <div className="px-4 py-2">
           <div className="space-y-1">
             {issues.map((issue, index) => {
-              const StatusIcon = statusConfig[issue.status].icon
+              const statusKey: IssueStatus = issue.status as IssueStatus
               const isSelected = issue.id === selectedIssueId
 
               return (
@@ -113,7 +112,7 @@ export function IssuesSidebar({
                           issue.status === "in-progress" && "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
                           issue.status === "resolved" && "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
                         )}>
-                          {statusConfig[issue.status].label}
+                          {statusConfig[statusKey].label}
                         </div>
                       </div>
                       
@@ -168,13 +167,23 @@ export function IssuesSidebar({
           </button>
           <button
             onClick={() => {
-              router.push("/profile")
+              router.push("/account/settings")
+              onCloseSidebar()
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-sidebar-accent/10 rounded-xl ios-transition ios-button min-h-[44px] mb-2"
+          >
+            <Settings className="h-5 w-5 text-sidebar-foreground" />
+            <span className="text-sm font-medium text-sidebar-foreground">Settings</span>
+          </button>
+          <button
+            onClick={() => {
+              router.push("/account/security")
               onCloseSidebar()
             }}
             className="w-full flex items-center gap-3 px-4 py-3 hover:bg-sidebar-accent/10 rounded-xl ios-transition ios-button min-h-[44px]"
           >
-            <Settings className="h-5 w-5 text-sidebar-foreground" />
-            <span className="text-sm font-medium text-sidebar-foreground">Profile</span>
+            <Shield className="h-5 w-5 text-sidebar-foreground" />
+            <span className="text-sm font-medium text-sidebar-foreground">Security</span>
           </button>
         </div>
       </div>

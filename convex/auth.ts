@@ -4,6 +4,8 @@ import { components } from "./_generated/api";
 import { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import { betterAuth } from "better-auth";
+import { passkey } from "better-auth/plugins/passkey"
+import { twoFactor } from "better-auth/plugins";
 
 const siteUrl = process.env.SITE_URL!;
 
@@ -104,6 +106,11 @@ export const createAuth = (
     logger: {
       disabled: optionsOnly,
     },
+    user: {
+        deleteUser: { 
+            enabled: true
+        } 
+    },
     baseURL: siteUrl,
     database: authComponent.adapter(ctx),
     // Configure simple, non-verified email/password to get started
@@ -114,6 +121,9 @@ export const createAuth = (
     plugins: [
       // The Convex plugin is required for Convex compatibility
       convex(),
+      passkey(),
+      twoFactor(),
+
     ],
   });
 };

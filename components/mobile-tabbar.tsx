@@ -15,7 +15,7 @@ export function MobileTabBar() {
 
   const onHome = pathname === "/"
   const chatActive = onHome && !!searchParams.get("issueId")
-  const onSupportedRoute = onHome || /^\/profile(\/.*)?$/.test(pathname) || /^\/activity(\/.*)?$/.test(pathname)
+  const onSupportedRoute = onHome || /^\/account\/(settings|security|create-voice)(\/.*)?$/.test(pathname) || /^\/activity(\/.*)?$/.test(pathname)
 
   if (!onSupportedRoute || chatActive) return null
 
@@ -42,13 +42,13 @@ export function MobileTabBar() {
             <span className={`${isActive(/^\/activity(\/.*)?$/) ? "text-primary" : "text-muted-foreground"}`}>Activity</span>
           </button>
           <button
-            aria-label="Profile"
-            aria-current={isActive(/^\/profile(\/.*)?$/) ? "page" : undefined}
-            onClick={() => router.push("/profile")}
+            aria-label="Settings"
+            aria-current={isActive(/^\/account\/(settings|security|create-voice)(\/.*)?$/) ? "page" : undefined}
+            onClick={() => router.push("/account/settings")}
             className="flex flex-col items-center gap-1 text-xs"
           >
-            <User className={`h-5 w-5 ${isActive(/^\/profile(\/.*)?$/) ? "text-primary" : "text-muted-foreground"}`} />
-            <span className={`${isActive(/^\/profile(\/.*)?$/) ? "text-primary" : "text-muted-foreground"}`}>Profile</span>
+            <User className={`h-5 w-5 ${isActive(/^\/account\/(settings|security|create-voice)(\/.*)?$/) ? "text-primary" : "text-muted-foreground"}`} />
+            <span className={`${isActive(/^\/account\/(settings|security|create-voice)(\/.*)?$/) ? "text-primary" : "text-muted-foreground"}`}>Settings</span>
           </button>
         </div>
       </div>
