@@ -212,9 +212,10 @@ export default function CreateVoicePage() {
         <IssuesSidebar
           issues={issues as any}
           selectedIssueId={null}
-          onSelectIssue={(id) => { router.push(`/?issueId=${id}`) }}
-          onGoHome={() => router.push("/")}
+          onSelectIssue={(id) => { router.push(`/dashboard?issueId=${id}`) }}
+          onGoHome={() => router.push("/dashboard")}
           onCloseSidebar={() => setSidebarOpen(false)}
+          disableAnimation
         />
       </div>
       <div className="mx-auto w-full max-w-3xl px-6 pt-20 lg:pt-6 pb-24 animate-fade-in-up">

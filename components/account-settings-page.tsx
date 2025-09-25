@@ -13,7 +13,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import { Menu, Plus, CheckCircle2, MailWarning } from "lucide-react"
 import type { IssueListItem } from "@/types/issue"
-import { UpdateAvatarCard, RedirectToSignIn, SignedIn } from "@daveyplate/better-auth-ui"
+import { RedirectToSignIn, SignedIn } from "@daveyplate/better-auth-ui"
+import { motion } from "framer-motion"
 
 // Local card wrapper to mimic Better Auth UI styling for custom fields
 function FieldRow({
@@ -180,20 +181,26 @@ export function AccountSettingsPage() {
             <IssuesSidebar
               issues={issues as any}
               selectedIssueId={null}
-              onSelectIssue={(id) => { router.push(`/?issueId=${id}`) }}
-              onGoHome={() => router.push("/")}
+              onSelectIssue={(id) => { router.push(`/dashboard?issueId=${id}`) }}
+              onGoHome={() => router.push("/dashboard")}
               onCloseSidebar={() => setSidebarOpen(false)}
+              disableAnimation
             />
           </div>
-          <div className="mx-auto w-full max-w-5xl px-6 pt-20 lg:pt-10 pb-24 animate-fade-in-up">
-            <div className="mb-6">
+          <div className="mx-auto w-full max-w-5xl px-6 pt-20 lg:pt-6 pb-24">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="mb-8"
+            >
               <h1 className="text-2xl font-semibold tracking-tight">Account Settings</h1>
               <p className="text-sm text-muted-foreground mt-1">Manage your personal details & profile.</p>
-            </div>
+            </motion.div>
 
-            <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
+            <div className="grid gap-12 lg:grid-cols-2 lg:items-start">
               {/* Left column: custom form fields */}
-              <div className="grid gap-8 order-1">
+              <div className="grid gap-10 order-1">
                 <section>
                   <h2 className="text-base font-semibold">Voice Assistant</h2>
                   <p className="text-sm text-muted-foreground">Configure your preferred voice</p>
@@ -210,14 +217,24 @@ export function AccountSettingsPage() {
                   </div>
                 </section>
 
-                <Alert>
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.05 }}
+                >
+                  <Alert>
                   <AlertTitle>How we use your details</AlertTitle>
                   <AlertDescription>
                     We pass these details to agents to accelerate resolution. Time zone helps us schedule call-backs.
                   </AlertDescription>
-                </Alert>
+                  </Alert>
+                </motion.div>
 
-                <section>
+                <motion.section
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.1 }}
+                >
                   <h2 className="text-base font-semibold">Personal information</h2>
                   <p className="text-sm text-muted-foreground">Your basic profile details</p>
                   <div className="mt-4 divide-y">
@@ -231,9 +248,13 @@ export function AccountSettingsPage() {
                       <Input type="date" value={values.birthdate} onChange={(e) => setValues(v => ({ ...v, birthdate: e.target.value }))} autoComplete="bday" />
                     </FieldRow>
                   </div>
-                </section>
+                </motion.section>
 
-                <section>
+                <motion.section
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.15 }}
+                >
                   <h2 className="text-base font-semibold">Contact information</h2>
                   <p className="text-sm text-muted-foreground">How we can reach you</p>
                   <div className="mt-4 divide-y">
@@ -247,9 +268,13 @@ export function AccountSettingsPage() {
                       <Input value={values.address} onChange={(e) => setValues(v => ({ ...v, address: e.target.value }))} placeholder="123 Main St, City, State" autoComplete="street-address" />
                     </FieldRow>
                   </div>
-                </section>
+                </motion.section>
 
-                <section>
+                <motion.section
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.2 }}
+                >
                   <h2 className="text-base font-semibold">Preferences</h2>
                   <p className="text-sm text-muted-foreground">Regional preferences</p>
                   <div className="mt-4 divide-y">
@@ -260,13 +285,18 @@ export function AccountSettingsPage() {
                       </div>
                     </div>
                   </div>
-                </section>
+                </motion.section>
               </div>
 
               {/* Right column: Account management subset */}
               <div className="flex flex-col gap-6 order-2">
-                <UpdateAvatarCard />
-                <EmailVerificationCard />
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.25 }}
+                >
+                  <EmailVerificationCard />
+                </motion.div>
               </div>
             </div>
           </div>

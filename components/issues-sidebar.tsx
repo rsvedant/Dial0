@@ -15,6 +15,7 @@ interface IssuesSidebarProps {
   onSelectIssue: (issueId: string) => void
   onGoHome: () => void
   onCloseSidebar: () => void
+  disableAnimation?: boolean
 }
 
 const statusConfig = {
@@ -41,10 +42,11 @@ export function IssuesSidebar({
   onSelectIssue,
   onGoHome,
   onCloseSidebar,
+  disableAnimation,
 }: IssuesSidebarProps) {
   const router = useRouter()
   return (
-    <div className="h-full ios-sidebar flex flex-col animate-slide-in-left ios-no-bounce overflow-hidden">
+    <div className={`h-full ios-sidebar flex flex-col ios-no-bounce overflow-hidden ${disableAnimation ? '' : 'animate-slide-in-left'}`}>
       {/* iOS-style Header */}
       <div className="safe-top bg-sidebar/95 backdrop-blur-xl border-b border-sidebar-border/50">
         <div className="px-4 py-3">
@@ -75,16 +77,17 @@ export function IssuesSidebar({
             {issues.map((issue, index) => {
               const statusKey: IssueStatus = issue.status as IssueStatus
               const isSelected = issue.id === selectedIssueId
+              const itemAnimationClass = disableAnimation ? '' : 'animate-fade-in-up'
 
               return (
                 <div
                   key={issue.id}
                   className={cn(
                     "group relative ios-list-item p-3 cursor-pointer ios-transition ios-button",
-                    "animate-fade-in-up",
+                    itemAnimationClass,
                     isSelected && "bg-primary/10 border border-primary/20",
                   )}
-                  style={{ animationDelay: `${index * 0.05}s` }}
+                  style={disableAnimation ? undefined : { animationDelay: `${index * 0.05}s` }}
                   onClick={() => {
                     onSelectIssue(issue.id)
                     onCloseSidebar()

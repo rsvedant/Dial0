@@ -116,10 +116,11 @@ export default function ProfilePage() {
           issues={issues as any}
           selectedIssueId={null}
           onSelectIssue={(id) => {
-            router.push(`/?issueId=${id}`)
+            router.push(`/dashboard?issueId=${id}`)
           }}
-          onGoHome={() => router.push("/")}
+          onGoHome={() => router.push("/dashboard")}
           onCloseSidebar={() => setSidebarOpen(false)}
+          disableAnimation
         />
       </div>
 

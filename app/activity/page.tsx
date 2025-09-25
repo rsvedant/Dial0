@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { motion } from "framer-motion"
 import { Badge } from "@/components/ui/badge"
 import { PhoneCall, Clock, Info, CheckCircle2, Building2, Hash, Menu } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -136,30 +137,38 @@ export default function ActivityPage() {
           issues={issues as any}
           selectedIssueId={null}
           onSelectIssue={(id) => {
-            router.push(`/?issueId=${id}`)
+            router.push(`/dashboard?issueId=${id}`)
           }}
-          onGoHome={() => router.push("/")}
+          onGoHome={() => router.push("/dashboard")}
           onCloseSidebar={() => setSidebarOpen(false)}
+          disableAnimation
         />
       </div>
 
-      <div className="mx-auto w-full max-w-3xl px-6 pt-20 lg:pt-6 pb-24 animate-fade-in-up">
-        <div className="mb-6">
+      <div className="mx-auto w-full max-w-3xl px-6 pt-20 lg:pt-6 pb-24">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+          className="mb-6"
+        >
           <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
           <p className="text-sm text-muted-foreground mt-1">Your recent updates and status changes.</p>
-        </div>
+        </motion.div>
 
-        <div className="divide-y rounded-xl border">
+        <div className="divide-y rounded-xl border overflow-hidden">
           {updates.map((u, index) => {
             const badge = typeToBadge(u.type)
             return (
-              <button
+              <motion.button
                 key={u.id}
-                className="w-full text-left px-4 py-4 hover:bg-accent/10 transition-colors cursor-pointer"
-                style={{ animationDelay: `${index * 0.04}s` }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.05 * index, ease: [0.16, 1, 0.3, 1] }}
+                className="w-full text-left px-4 py-4 hover:bg-accent/10 transition-colors cursor-pointer focus:outline-none"
                 onClick={() => {
                   if (u.issueId) {
-                    router.push(`/?issueId=${encodeURIComponent(u.issueId)}`)
+                    router.push(`/dashboard?issueId=${encodeURIComponent(u.issueId)}`)
                   }
                 }}
               >
@@ -189,7 +198,7 @@ export default function ActivityPage() {
                     </div>
                   </div>
                 </div>
-              </button>
+              </motion.button>
             )
           })}
         </div>
