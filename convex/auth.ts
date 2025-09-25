@@ -7,10 +7,8 @@ import { betterAuth } from "better-auth";
 import { passkey } from "better-auth/plugins/passkey"
 import { twoFactor } from "better-auth/plugins";
 
-const siteUrl = process.env.SITE_URL!;
-
-// The component client has methods needed for integrating Convex with Better Auth,
-// as well as helper methods for general use.
+const siteUrl = process.env.NGROK_WEBHOOK_URL ? process.env.NGROK_WEBHOOK_URL : process.env.SITE_URL;
+console.log(siteUrl)
 export const authComponent = createClient<DataModel>(components.betterAuth, {
   triggers: {
     user: {
@@ -106,6 +104,14 @@ export const createAuth = (
     logger: {
       disabled: optionsOnly,
     },
+    // Allow both local dev and tunnel/external origins.
+    // Resolves: Invalid origin errors when frontend runs on localhost but baseURL / email links use ngrok.
+    trustedOrigins: [
+      process.env.NGROK_WEBHOOK_URL,
+      process.env.SITE_URL,
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+    ].filter(Boolean) as string[],
     user: {
         deleteUser: { 
             enabled: true
@@ -116,7 +122,30 @@ export const createAuth = (
     // Configure simple, non-verified email/password to get started
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: false,
+      requireEmailVerification: true,
+    },
+    emailVerification: {
+      sendVerificationEmail: async (data, request) => {
+        const { user, url, token } = data;
+        try {
+          // Call Next.js API route to send the email using the original template.
+          const res = await fetch(`${siteUrl}/api/auth/send-verification-email`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-internal-email-key": process.env.INTERNAL_EMAIL_PROXY_SECRET || "",
+            },
+            body: JSON.stringify({ user: { email: user.email, name: user.name }, url, token }),
+          });
+          if (!res.ok) {
+            console.error("[sendVerificationEmail] Proxy route failed", await res.text());
+          }
+        } catch (e) {
+          console.error("[sendVerificationEmail] Proxy request error", e);
+        }
+      },
+      autoSignInAfterVerification: true,
+      sendOnSignUp: true,
     },
     plugins: [
       // The Convex plugin is required for Convex compatibility
