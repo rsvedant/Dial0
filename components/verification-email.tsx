@@ -1,6 +1,21 @@
 export const Email = ({ username }: { username: string }) => {
     return (
         <div className="font-sans max-w-[600px] mx-auto p-5">
+            {(() => {
+                const base = (process.env.SITE_URL || "").replace(/\/$/, "");
+                const logoUrl = base ? `${base}/DialZero.svg` : "/DialZero.svg";
+                return (
+                    <div className="mb-6 text-center">
+                        <img
+                            src={logoUrl}
+                            alt="Dial0 Logo"
+                            width={120}
+                            height={40}
+                            style={{ display: 'inline-block' }}
+                        />
+                    </div>
+                );
+            })()}
             <h1 className="text-black text-2xl font-semibold mb-5">
                 Welcome to Dial0
             </h1>

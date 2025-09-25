@@ -5,7 +5,7 @@ import { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import { betterAuth } from "better-auth";
 import { passkey } from "better-auth/plugins/passkey"
-import { twoFactor } from "better-auth/plugins";
+import { twoFactor, magicLink } from "better-auth/plugins";
 
 const siteUrl = process.env.NGROK_WEBHOOK_URL ? process.env.NGROK_WEBHOOK_URL : process.env.SITE_URL;
 console.log(siteUrl)
@@ -123,6 +123,26 @@ export const createAuth = (
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,
+      sendResetPassword: async ({ user, url, token }, request) => {
+        try {
+          const res = await fetch(`${siteUrl}/api/auth/send-reset-password`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-internal-email-key": process.env.INTERNAL_EMAIL_PROXY_SECRET || "",
+            },
+            body: JSON.stringify({ user: { email: user.email, name: user.name }, url, token }),
+          });
+          if (!res.ok) {
+            console.error("[sendResetPassword] Proxy route failed", await res.text());
+          }
+        } catch (e) {
+          console.error("[sendResetPassword] Proxy request error", e);
+        }
+      },
+      onPasswordReset: async ({ user }, request) => {
+        console.log("[onPasswordReset] Password reset for", user?.email);
+      },
     },
     emailVerification: {
       sendVerificationEmail: async (data, request) => {
@@ -152,6 +172,25 @@ export const createAuth = (
       convex(),
       passkey(),
       twoFactor(),
+      magicLink({
+        sendMagicLink: async ({ email, url, token }, request) => {
+          try {
+            const res = await fetch(`${siteUrl}/api/auth/send-magic-link`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-internal-email-key": process.env.INTERNAL_EMAIL_PROXY_SECRET || "",
+              },
+              body: JSON.stringify({ email, url, token }),
+            });
+            if (!res.ok) {
+              console.error("[sendMagicLink] Proxy route failed", await res.text());
+            }
+          } catch (e) {
+            console.error("[sendMagicLink] Proxy request error", e);
+          }
+        },
+      }),
 
     ],
   });
