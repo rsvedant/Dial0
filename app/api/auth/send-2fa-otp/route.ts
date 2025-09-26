@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
-import { VerificationEmail } from "@/components/verification-email";
+import { TwoFactorOtpEmail } from "@/components/two-factor-otp-email";
 import { lookupGeo } from "@/lib/geo";
 
 interface ClientContextPayload {
@@ -19,21 +19,20 @@ export async function POST(req: NextRequest) {
     const providedSecret = req.headers.get("x-internal-email-key");
     const expectedSecret = process.env.INTERNAL_EMAIL_PROXY_SECRET;
     if (!expectedSecret) {
-      console.warn("[send-verification-email] INTERNAL_EMAIL_PROXY_SECRET not set; rejecting for safety");
+      console.warn("[send-2fa-otp] INTERNAL_EMAIL_PROXY_SECRET not set");
       return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 });
     }
     if (!providedSecret || providedSecret !== expectedSecret) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { user, url, clientContext } = (await req.json()) as {
+    const { user, otp, clientContext } = (await req.json()) as {
       user?: { email?: string; name?: string };
-      url?: string;
-      token?: string;
+      otp?: string;
       clientContext?: ClientContextPayload;
     };
-    if (!user?.email || !url) {
-      return NextResponse.json({ error: "Missing email or url" }, { status: 400 });
+    if (!user?.email || !otp) {
+      return NextResponse.json({ error: "Missing email or otp" }, { status: 400 });
     }
 
     const headerForwarded = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || undefined;
@@ -63,10 +62,10 @@ export async function POST(req: NextRequest) {
     await resend.emails.send({
       from: process.env.RESEND_FROM!,
       to: user.email,
-      subject: "Verify your email address",
-      react: VerificationEmail({
+      subject: "Your Dial0 verification code",
+      react: TwoFactorOtpEmail({
         username: user.name || user.email.split("@")[0],
-        actionUrl: url,
+        otp,
         metadata,
         logoUrl,
       }),
@@ -74,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    console.error("[send-verification-email] error", e);
+    console.error("[send-2fa-otp] error", e);
     return NextResponse.json({ error: e?.message || "Internal error" }, { status: 500 });
   }
 }

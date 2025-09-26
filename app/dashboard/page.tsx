@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 import { useQuery, useMutation, Authenticated, Unauthenticated, AuthLoading } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAuthenticate } from "@daveyplate/better-auth-ui";
 import { AuthDebug } from "@/components/auth-debug";
 import { SettingsBootstrap } from "@/components/settings-bootstrap";
 
@@ -171,8 +170,12 @@ function DashboardContent() {
           )}
         </div>
       </div>
-      <AuthDebug />
-      <SettingsBootstrap />
+      { process.env.NODE_ENV=="development" && 
+            <AuthDebug />
+            &&
+            <SettingsBootstrap />
+      }
+
     </div>
   )
 }

@@ -1,44 +1,58 @@
-export const Email = ({ username }: { username: string }) => {
-    return (
-        <div className="font-sans max-w-[600px] mx-auto p-5">
-            {(() => {
-                const base = (process.env.SITE_URL || "").replace(/\/$/, "");
-                const logoUrl = base ? `${base}/DialZero.svg` : "/DialZero.svg";
-                return (
-                    <div className="mb-6 text-center">
-                        <img
-                            src={logoUrl}
-                            alt="Dial0 Logo"
-                            width={120}
-                            height={40}
-                            style={{ display: 'inline-block' }}
-                        />
-                    </div>
-                );
-            })()}
-            <h1 className="text-black text-2xl font-semibold mb-5">
-                Welcome to Dial0
-            </h1>
+import * as React from "react";
+import {
+  EmailFrame,
+  EmailMeta,
+  paragraphStyle,
+  mutedParagraphStyle,
+} from "@/components/email-common";
 
-            <p className="text-gray-800 text-base leading-relaxed mb-5">
-                Hello, {username}!
-            </p>
-
-            <p className="text-gray-800 text-base leading-relaxed mb-5">
-                Thank you for joining Dial0! Please confirm your email address to
-                complete your signup.
-            </p>
-
-            <p className="text-gray-500 text-sm mt-8">
-                This link will expire in 24 hours.
-            </p>
-
-            <hr className="border-t border-gray-200 my-8" />
-
-            <p className="text-gray-400 text-xs text-center">
-                Dial0 - Never take calls again
-                <br />
-            </p>
-        </div>
-    )
+export interface VerificationEmailProps {
+  username?: string;
+  actionUrl: string;
+  metadata?: EmailMeta;
+  logoUrl?: string;
 }
+
+export const VerificationEmail: React.FC<VerificationEmailProps> = ({
+  username,
+  actionUrl,
+  metadata,
+  logoUrl,
+}) => {
+  const name = username?.trim() || "there";
+  const body = (
+    <>
+      <p style={paragraphStyle}>Hi {name},</p>
+      <p style={paragraphStyle}>
+        Thanks for choosing Dial0. Confirm your email to activate your workspace and unlock automated advocacy for your support cases.
+      </p>
+      <p style={paragraphStyle}>
+        Once verified, you can invite teammates, track escalations, and stay notified as we push each case to resolution.
+      </p>
+      <p style={mutedParagraphStyle}>
+        If you did not expect this email, you can safely ignore it and your account will remain inactive.
+      </p>
+    </>
+  );
+
+  return (
+    <EmailFrame
+      preheader="Confirm your email to activate Dial0."
+      eyebrow="Action required"
+      title="Verify your email"
+      summary="Secure your Dial0 workspace and start automating complex follow ups."
+      action={{
+        label: "Confirm email",
+        url: actionUrl,
+        helpText: "Button not working? Copy this link:",
+        fallbackText: actionUrl,
+      }}
+      body={body}
+      metadata={metadata}
+      footerNote="This confirmation link expires in 24 hours."
+      logoUrl={logoUrl}
+    />
+  );
+};
+
+export default VerificationEmail;

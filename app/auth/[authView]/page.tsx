@@ -1,5 +1,6 @@
-import { AuthView } from "@daveyplate/better-auth-ui"
 import { authViewPaths } from "@daveyplate/better-auth-ui/server"
+import { AuroraBackground } from "@/components/ui/aurora-background"
+import { AnimatedAuthView } from "@/components/animated-auth-view"
 
 export const dynamicParams = false
 
@@ -11,8 +12,10 @@ export default async function AuthPage({ params }: { params: Promise<{ authView:
     const { authView } = await params
 
     return (
-        <main className="container flex grow flex-col items-center justify-center self-center p-4 md:p-6">
-            <AuthView path={authView} redirectTo="/dashboard"/>
-        </main>
+        <AuroraBackground className="relative overflow-hidden">
+            <div className="flex w-full justify-center px-4 py-10 md:px-6">
+                <AnimatedAuthView path={authView} />
+            </div>
+        </AuroraBackground>
     )
 }

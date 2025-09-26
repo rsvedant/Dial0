@@ -9,6 +9,45 @@ import { twoFactor, magicLink } from "better-auth/plugins";
 
 const siteUrl = process.env.NGROK_WEBHOOK_URL ? process.env.NGROK_WEBHOOK_URL : process.env.SITE_URL;
 console.log(siteUrl)
+
+type ClientContextPayload = {
+  ip?: string;
+  ipChain?: string;
+  userAgent?: string;
+  city?: string;
+  region?: string;
+  country?: string;
+};
+
+function extractClientContext(request?: Request | null): ClientContextPayload | undefined {
+  if (!request) return undefined;
+  const headers = request.headers;
+  if (!headers) return undefined;
+  const get = (name: string) => headers.get(name)?.trim() || undefined;
+  const ipChain =
+    get("x-forwarded-for") ||
+    get("cf-connecting-ip") ||
+    get("x-real-ip") ||
+    get("x-client-ip");
+  const ip = ipChain?.split(",")[0]?.trim();
+  const context: ClientContextPayload = {
+    ip,
+    ipChain,
+    userAgent: get("user-agent"),
+    city: get("x-vercel-ip-city") || get("cf-ipcity"),
+    region: get("x-vercel-ip-region") || get("cf-region"),
+    country: get("x-vercel-ip-country") || get("cf-ipcountry"),
+  };
+  const hasValue = Boolean(
+    context.ip ||
+      context.ipChain ||
+      context.userAgent ||
+      context.city ||
+      context.region ||
+      context.country,
+  );
+  return hasValue ? context : undefined;
+}
 export const authComponent = createClient<DataModel>(components.betterAuth, {
   triggers: {
     user: {
@@ -117,21 +156,26 @@ export const createAuth = (
             enabled: true
         } 
     },
-    baseURL: siteUrl,
+    baseURL: process.env.SITE_URL,
     database: authComponent.adapter(ctx),
-    // Configure simple, non-verified email/password to get started
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: true,
+      requireEmailVerification: false,
       sendResetPassword: async ({ user, url, token }, request) => {
         try {
+          const clientContext = extractClientContext(request);
           const res = await fetch(`${siteUrl}/api/auth/send-reset-password`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               "x-internal-email-key": process.env.INTERNAL_EMAIL_PROXY_SECRET || "",
             },
-            body: JSON.stringify({ user: { email: user.email, name: user.name }, url, token }),
+            body: JSON.stringify({
+              user: { email: user.email, name: user.name },
+              url,
+              token,
+              clientContext,
+            }),
           });
           if (!res.ok) {
             console.error("[sendResetPassword] Proxy route failed", await res.text());
@@ -148,6 +192,7 @@ export const createAuth = (
       sendVerificationEmail: async (data, request) => {
         const { user, url, token } = data;
         try {
+          const clientContext = extractClientContext(request);
           // Call Next.js API route to send the email using the original template.
           const res = await fetch(`${siteUrl}/api/auth/send-verification-email`, {
             method: "POST",
@@ -155,7 +200,12 @@ export const createAuth = (
               "Content-Type": "application/json",
               "x-internal-email-key": process.env.INTERNAL_EMAIL_PROXY_SECRET || "",
             },
-            body: JSON.stringify({ user: { email: user.email, name: user.name }, url, token }),
+            body: JSON.stringify({
+              user: { email: user.email, name: user.name },
+              url,
+              token,
+              clientContext,
+            }),
           });
           if (!res.ok) {
             console.error("[sendVerificationEmail] Proxy route failed", await res.text());
@@ -171,17 +221,44 @@ export const createAuth = (
       // The Convex plugin is required for Convex compatibility
       convex(),
       passkey(),
-      twoFactor(),
+      twoFactor({
+        otpOptions: {
+          sendOTP: async ({ user, otp }, request) => {
+            try {
+              const clientContext = extractClientContext(request);
+              const res = await fetch(`${siteUrl}/api/auth/send-2fa-otp`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-internal-email-key": process.env.INTERNAL_EMAIL_PROXY_SECRET || "",
+                },
+                body: JSON.stringify({
+                  user: { email: user.email, name: user.name },
+                  otp,
+                  clientContext,
+                }),
+              });
+              if (!res.ok) {
+                console.error("[sendOTP] Proxy route failed", await res.text());
+              }
+            } catch (e) {
+              console.error("[sendOTP] Proxy request error", e);
+            }
+          },
+        },
+        skipVerificationOnEnable: true,
+      }),
       magicLink({
         sendMagicLink: async ({ email, url, token }, request) => {
           try {
+            const clientContext = extractClientContext(request);
             const res = await fetch(`${siteUrl}/api/auth/send-magic-link`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
                 "x-internal-email-key": process.env.INTERNAL_EMAIL_PROXY_SECRET || "",
               },
-              body: JSON.stringify({ email, url, token }),
+              body: JSON.stringify({ email, url, token, clientContext }),
             });
             if (!res.ok) {
               console.error("[sendMagicLink] Proxy route failed", await res.text());
