@@ -23,6 +23,7 @@ export function Providers({ children }: { children: ReactNode }) {
             passkey
             twoFactor={["otp", "totp"]} // TODO: add otp function
             emailVerification
+            magicLink
         >
             {children}
         </AuthUIProvider>
