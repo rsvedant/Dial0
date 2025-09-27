@@ -3,7 +3,7 @@
 import type { IssueListItem, IssueStatus } from "@/types/issue"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { X, MessageCircle, Clock, CheckCircle2, Settings, Shield, Home, Inbox } from "lucide-react"
+import { X, MessageCircle, Clock, CheckCircle2, Settings, Shield, Home, Inbox, CreditCard } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { IssueIcon } from "@/components/issue-icon"
 import { useRouter } from "next/navigation"
@@ -158,6 +158,16 @@ export function IssuesSidebar({
       {/* iOS-style Bottom Section */}
       <div className="mt-auto safe-bottom bg-sidebar/95 backdrop-blur-xl border-t border-sidebar-border/50">
         <div className="px-4 py-3">
+          <button
+            onClick={() => {
+              router.push("/billing")
+              onCloseSidebar()
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-sidebar-accent/10 rounded-xl ios-transition ios-button min-h-[44px] mb-2"
+          >
+            <CreditCard className="h-5 w-5 text-sidebar-foreground" />
+            <span className="text-sm font-medium text-sidebar-foreground">Billing &amp; Usage</span>
+          </button>
           <button
             onClick={() => {
               router.push("/activity")

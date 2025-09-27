@@ -8,8 +8,10 @@
  * @module
  */
 
+import type * as actions_autumn from "../actions/autumn.js";
 import type * as actions_voiceCloning from "../actions/voiceCloning.js";
 import type * as auth from "../auth.js";
+import type * as autumn from "../autumn.js";
 import type * as http from "../http.js";
 import type * as orchestration from "../orchestration.js";
 
@@ -28,8 +30,10 @@ import type {
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  "actions/autumn": typeof actions_autumn;
   "actions/voiceCloning": typeof actions_voiceCloning;
   auth: typeof auth;
+  autumn: typeof autumn;
   http: typeof http;
   orchestration: typeof orchestration;
 }>;
@@ -5314,4 +5318,5 @@ export declare const components: {
       >;
     };
   };
+  autumn: {};
 };

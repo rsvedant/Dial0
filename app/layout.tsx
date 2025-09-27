@@ -3,6 +3,7 @@ import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
 import { ConvexClientProvider } from './ConvexClientProvider'
+import { AutumnClientProvider } from './AutumnClientProvider'
 import { UserButton } from '@daveyplate/better-auth-ui'
 import { Toaster } from '@/components/ui/toaster'
 import { MobileTabBar } from '@/components/mobile-tabbar'
@@ -59,7 +60,9 @@ export default function RootLayout({
             <div className="fixed right-2 top-2 z-50 flex items-center gap-2">
               <UserButton className="h-8 w-8" />
             </div>
-            {children}
+            <AutumnClientProvider>
+              {children}
+            </AutumnClientProvider>
             {/* Hide mobile tab bar on the marketing landing page */}
             <ConditionalMobileTabbar />
             <Toaster />

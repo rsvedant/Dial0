@@ -1,4 +1,5 @@
-import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { mutation, query, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { authComponent, createAuth } from "./auth";
 
@@ -22,6 +23,11 @@ export const createIssue = mutation({
 	},
 	handler: async (ctx, { title }) => {
 		const userId = await requireUserId(ctx);
+		const [existing] = await ctx.db
+			.query("issues")
+			.withIndex("by_userId_createdAt", (q) => q.eq("userId", userId))
+			.take(1);
+
 		const createdAt = new Date().toISOString();
 		const id = await ctx.db.insert("issues", {
 			userId,
@@ -29,7 +35,21 @@ export const createIssue = mutation({
 			status: "open",
 			createdAt,
 		});
-		return { id, createdAt };
+
+		const shouldTrackUsage = Boolean(process.env.AUTUMN_SECRET_KEY);
+		if (shouldTrackUsage) {
+			await ctx.scheduler.runAfter(0, internal.actions.autumn.trackIssueUsage, {
+				userId,
+				value: 1,
+				metadata: { issueId: id as unknown as string },
+			});
+		}
+
+		return {
+			id,
+			createdAt,
+			isFirstIssue: existing ? false : true,
+		};
 	},
 });
 
@@ -228,6 +248,18 @@ export const getSettings = query({
 			.take(1);
 		return docs[0] ?? null;
     },
+});
+
+export const getSettingsForUserId = internalQuery({
+	args: { userId: v.string() },
+	handler: async (ctx, { userId }) => {
+		const docs = await ctx.db
+			.query("settings")
+			.withIndex("by_userId_updatedAt", (q) => q.eq("userId", userId))
+			.order("desc")
+			.take(1);
+		return docs[0] ?? null;
+	},
 });
 
 // Mutation form that guarantees a settings row exists (use this instead of getSettings on first load)
@@ -447,4 +479,3 @@ async function syncBetterAuthProfile(ctx: any, args: any) {
 		console.warn("Better Auth profile sync failed", e);
 	}
 }
-

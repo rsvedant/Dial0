@@ -10,6 +10,7 @@ import { api } from "@/convex/_generated/api";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthDebug } from "@/components/auth-debug";
 import { SettingsBootstrap } from "@/components/settings-bootstrap";
+import { useToast } from "@/hooks/use-toast";
 
 export interface Issue {
   id: string
@@ -47,6 +48,8 @@ function DashboardContent() {
   const createIssueMutation = useMutation(api.orchestration.createIssue);
   const updateIssueStatusMutation = useMutation(api.orchestration.updateIssueStatus);
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const { toast } = useToast();
 
   const knownContext = useMemo(() => ({
     user: {
@@ -110,12 +113,37 @@ function DashboardContent() {
   }, [])
 
   const createNewIssue = useCallback(async () => {
-    const title = "New Issue"
-    const res = await createIssueMutation({ title })
-    const newId = res.id as unknown as string
-    handleSelectIssue(newId)
-    setSidebarOpen(false)
-  }, [createIssueMutation, handleSelectIssue])
+    const title = "New Issue";
+    try {
+      const res = await createIssueMutation({ title });
+      const newId = res?.id as unknown as string | undefined;
+
+      if (!newId) {
+        throw new Error("Issue creation did not return an id");
+      }
+
+      setSidebarOpen(false);
+
+      if (res?.isFirstIssue) {
+        toast({
+          title: "Pick a plan to keep going",
+          description: "Your first issue is logged. Choose a billing tier to unlock unlimited resolutions.",
+        });
+        router.push("/billing?from=issue");
+        return;
+      }
+
+      handleSelectIssue(newId);
+    } catch (error) {
+      console.error("Failed to create issue", error);
+      toast({
+        variant: "destructive",
+        title: "Unable to create issue",
+        description:
+          error instanceof Error ? error.message : "Please try again in a few seconds.",
+      });
+    }
+  }, [createIssueMutation, handleSelectIssue, router, toast])
 
   const goHome = () => {
     setSelectedIssueId(null)
