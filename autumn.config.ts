@@ -7,12 +7,6 @@ import {
 } from "atmn";
 
 // Features
-export const emails = feature({
-	id: "emails",
-	name: "Emails",
-	type: "single_use",
-});
-
 export const voiceMinutes = feature({
 	id: "voice_minutes",
 	name: "Voice Minutes",
@@ -30,15 +24,6 @@ export const payAsYouGo = product({
 	id: "pay_as_you_go",
 	name: "Pay-As-You-Go",
 	items: [
-		pricedFeatureItem({
-			feature_id: emails.id,
-			price: 0.02,
-			interval: "month",
-			included_usage: 0,
-			billing_units: 1,
-			usage_model: "pay_per_use",
-		}),
-
 		pricedFeatureItem({
 			feature_id: issues.id,
 			price: 1.5,
@@ -66,15 +51,6 @@ export const plusPlan = product({
 		priceItem({
 			price: 49,
 			interval: "month",
-		}),
-
-		pricedFeatureItem({
-			feature_id: emails.id,
-			price: 0.01,
-			interval: "month",
-			included_usage: 100,
-			billing_units: 1,
-			usage_model: "pay_per_use",
 		}),
 
 		pricedFeatureItem({
@@ -113,21 +89,12 @@ export const proPlan = product({
 		}),
 
 		pricedFeatureItem({
-			feature_id: emails.id,
-			price: 0.008,
-			interval: "month",
-			included_usage: 2000,
-			billing_units: 1,
-			usage_model: "pay_per_use",
-		}),
-
-		pricedFeatureItem({
 			feature_id: issues.id,
 			price: 0.5,
 			interval: "month",
 			included_usage: 200,
 			billing_units: 1,
-			usage_model: "pay_per_use",
+			usage_model: "prepaid",
 		}),
 
 		pricedFeatureItem({

@@ -197,7 +197,7 @@ function describeItem(item: PricingProduct["items"][number]) {
     const fmt = (n: number) =>
       new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 
-    // Try to infer unit from the primary text (e.g., "100 emails" -> "email", "50 voice minutes" -> "voice minute")
+    // Try to infer unit from the primary text (e.g., "50 voice minutes" -> "voice minute")
     const unitMatch = primary.match(/\d[\d,.]*\s+(.+)/);
     const unitPlural = unitMatch ? unitMatch[1].trim() : undefined;
     const unitSingular =
