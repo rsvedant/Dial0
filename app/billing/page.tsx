@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast"
 
 const ISSUE_FEATURE_ID = "issues"
 const PLAN_SUMMARY_COPY: Record<string, string> = {
-  plus_plan: "Trial plan with onboarding support and baseline automations.",
+  plus_plan: "Default plan with a 2-week included trial for new customers.",
   pro_plan: "Pro unlocks higher limits, live voice escalation, and faster incident routing.",
   pay_as_you_go: "Usage-based billing with unlimited issue throughput and enterprise response SLAs.",
 }
@@ -25,7 +25,8 @@ const PLAN_SUMMARY_COPY: Record<string, string> = {
 function formatDate(timestamp?: number | null) {
   if (!timestamp) return null
   try {
-    const date = new Date(timestamp * 1000)
+    const ms = timestamp > 1_000_000_000_000 ? timestamp : timestamp * 1000
+    const date = new Date(ms)
     return date.toLocaleDateString(undefined, {
       year: "numeric",
       month: "short",
@@ -125,8 +126,12 @@ function usageSummary(feature: any) {
 }
 
 function currentPlan(customer: ReturnType<typeof useCustomer>["customer"]) {
-  if (!customer || !customer.products) return null
-  return customer.products.find((product) => product.status === "active") ?? null
+  if (!customer || !customer.products?.length) return null
+  const active = customer.products.find((product) => product.status === "active")
+  if (active) return active
+  const trialing = customer.products.find((product) => product.status === "trialing")
+  if (trialing) return trialing
+  return customer.products[0]
 }
 
 function nextRenewalAt(product: ReturnType<typeof currentPlan>) {
@@ -135,9 +140,14 @@ function nextRenewalAt(product: ReturnType<typeof currentPlan>) {
 }
 
 function trialDaysLeft(product: ReturnType<typeof currentPlan>) {
-  if (!product?.trial_ends_at) return null
+  if (!product) return null
   const now = Date.now()
-  const endMs = product.trial_ends_at * 1000
+  const trialEpoch =
+    product.status === "trialing" && product.current_period_end
+      ? product.current_period_end
+      : product.trial_ends_at
+  if (!trialEpoch) return null
+  const endMs = trialEpoch > 1_000_000_000_000 ? trialEpoch : trialEpoch * 1000
   const diff = Math.max(0, endMs - now)
   const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
   return days
@@ -157,6 +167,15 @@ function BillingContent() {
   const renewal = useMemo(() => nextRenewalAt(plan), [plan])
   const trialDays = useMemo(() => trialDaysLeft(plan), [plan])
   const hasPaymentMethod = Boolean(customer?.payment_method)
+  const statusLabel = plan?.status?.replace(/_/g, " ") ?? null
+  const trialEndDate = useMemo(() => {
+    if (!plan) return null
+    const epoch =
+      plan.status === "trialing" && plan.current_period_end
+        ? plan.current_period_end
+        : plan.trial_ends_at
+    return epoch ? formatDate(epoch) : null
+  }, [plan])
   const planCopy = plan?.id ? (PLAN_SUMMARY_COPY[plan.id] ?? PLAN_SUMMARY_COPY.plus_plan) : PLAN_SUMMARY_COPY.plus_plan
 
   const handleBillingPortal = async () => {
@@ -246,8 +265,24 @@ function BillingContent() {
               </CardHeader>
               <CardContent className="grid gap-3 text-sm pb-4">
                 <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Status</span>
+                  <span className="font-medium capitalize">{statusLabel ?? "—"}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Days left</span>
+                  <span className="font-medium">
+                    {plan?.status === "trialing" ? (trialDays ?? "—") : "—"}
+                  </span>
+                </div>
+                {plan?.status === "trialing" && trialEndDate && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Trial ends</span>
+                    <span className="font-medium">{trialEndDate}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Renewal</span>
-                  <span className="font-medium">{renewal ?? (plan ? "Auto-renews" : "After trial")}</span>
+                  <span className="font-medium">{renewal ?? (plan ? "After trial" : "—")}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Payment method</span>
