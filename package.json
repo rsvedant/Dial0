@@ -43,6 +43,7 @@
     "@radix-ui/react-tooltip": "1.1.6",
     "@useautumn/convex": "^0.0.12",
     "@vercel/analytics": "1.3.1",
+    "atmn": "^0.0.24",
     "autoprefixer": "^10.4.20",
     "autumn-js": "^0.1.39",
     "better-auth": "1.3.8",
