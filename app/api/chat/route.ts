@@ -1,11 +1,10 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { NextRequest, NextResponse } from 'next/server'
 import { api } from '@/convex/_generated/api'
-import { ConvexHttpClient } from 'convex/browser'
+import { fetchQuery } from 'convex/nextjs'
+import { getToken } from '@/lib/auth-server'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL
-const convex = convexUrl ? new ConvexHttpClient(convexUrl) : null
 
 // System prompt for lightweight, progressive intake
 const SYSTEM_PROMPT = `You are a helpful, lightweight intake agent preparing for a real phone call to resolve the user's problem.
@@ -56,7 +55,7 @@ export async function POST(req: NextRequest) {
 
     const model = genAI.getGenerativeModel({
       // Use a widely available, reliable model
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
     })
 
     // Use conversation history EXCEPT the last user turn (we'll send that as the new message)
@@ -68,13 +67,16 @@ export async function POST(req: NextRequest) {
     }))
 
     // Fetch latest settings from Convex to pre-fill identity/contacts/timezone so we don't ask for them
+    const token = await getToken()
     let settings: any = null
-    if (convex) {
+    if (token) {
       try {
-        settings = await convex.query(api.orchestration.getSettings, {})
+        settings = await fetchQuery(api.orchestration.getSettings, {}, { token })
       } catch (e) {
         console.warn('Failed to fetch settings from Convex (intake):', e)
       }
+    } else {
+      console.warn('No auth token available while fetching Convex settings for intake')
     }
 
     // Log what we're sending to debug empty responses

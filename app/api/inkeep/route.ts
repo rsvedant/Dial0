@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { api } from '@/convex/_generated/api'
-import { ConvexHttpClient } from 'convex/browser'
+import { fetchQuery, fetchMutation } from 'convex/nextjs'
+import { getToken } from '@/lib/auth-server'
 import { z } from 'zod'
-
-// Simple server-side Convex HTTP client if URL is present
-const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL
-const convex = convexUrl ? new ConvexHttpClient(convexUrl) : null
 
 // Routing agent: builds VAPI-ready context from a finalized Gemini transcript
 const SYSTEM_ROUTER_PROMPT = `You are a routing and orchestration agent. Given a finalized chat transcript that identified a user's issue, build a precise, actionable call context for a downstream voice agent (VAPI) to place a phone call to a person/business/service.
@@ -59,13 +56,16 @@ export async function POST(req: NextRequest) {
     })
 
     // Pull latest user/org settings from Convex for additional context
+    const token = await getToken()
     let settings: any = null
-    if (convex) {
+    if (token) {
       try {
-        settings = await convex.query(api.orchestration.getSettings, {})
+        settings = await fetchQuery(api.orchestration.getSettings, {}, { token })
       } catch (e) {
         console.warn('Failed to fetch settings from Convex:', e)
       }
+    } else {
+      console.warn('No auth token available while fetching Convex settings')
     }
 
   const prompt = `${SYSTEM_ROUTER_PROMPT}
@@ -296,15 +296,15 @@ Build the JSON now. Output JSON only.`
 
     // Save globally to Convex
     let persisted: { id?: string; createdAt?: string } = {}
-    if (convex) {
-      persisted = await convex.mutation(api.orchestration.setContext, {
+    if (token) {
+      persisted = await fetchMutation(api.orchestration.setContext, {
         context,
         summary: `Routing context for issue ${issueId || 'N/A'}`,
         issueId: issueId || undefined,
         source: 'inkeep-routing-agent',
-      })
+      }, { token })
     } else {
-      console.warn('Convex URL not set; skipping persistence of routing context')
+      console.warn('No auth token available; skipping persistence of routing context')
     }
 
     // Log on server for verification
@@ -317,9 +317,9 @@ Build the JSON now. Output JSON only.`
     try {
       // Idempotency guard: if a recent start request or monitor exists, skip triggering another call
       let shouldSkip = false
-      if (convex && issueId) {
+      if (token && issueId) {
         try {
-          const events = await convex.query(api.orchestration.listCallEvents, { issueId })
+          const events = await fetchQuery(api.orchestration.listCallEvents, { issueId }, { token })
           const now = Date.now()
           // Recent 'start-call-request' within 12s or 'monitor' within 60s indicates a call is in-flight or active
           for (let i = events.length - 1; i >= 0; i--) {
@@ -332,11 +332,11 @@ Build the JSON now. Output JSON only.`
           }
           if (!shouldSkip) {
             // Place a short-lived start lock so parallel triggers skip
-            await convex.mutation(api.orchestration.appendCallEvent, {
+            await fetchMutation(api.orchestration.appendCallEvent, {
               issueId,
               type: 'start-call-request',
               content: JSON.stringify({ at: new Date().toISOString() }),
-            })
+            }, { token })
           }
         } catch (e) {
           console.warn('Idempotency pre-check failed:', e)
@@ -350,7 +350,7 @@ Build the JSON now. Output JSON only.`
       const startResp = await fetch(`${origin}/api/vapi/start-call`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ issueId, context })
+        body: JSON.stringify({ issueId, context, authToken: token || undefined })
       })
       call = await startResp.json().catch(() => ({}))
       callInitiated = startResp.ok

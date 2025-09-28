@@ -14,6 +14,7 @@ if (!AUTUMN_SECRET_KEY) {
 }
 
 const ISSUE_FEATURE_ID = "issues";
+const VOICE_MINUTES_FEATURE_ID = "voice_minutes";
 
 function buildSuccessUrl(successPath?: string | null) {
 	const siteUrl = process.env.SITE_URL ?? process.env.NGROK_WEBHOOK_URL ?? process.env.NEXT_PUBLIC_SITE_URL;
@@ -53,6 +54,65 @@ export const startPlanCheckout = action({
 			...result,
 			flow: "checkout" as const,
 		};
+	},
+});
+
+export const trackVoiceMinutesUsage = internalAction({
+	args: {
+		userId: v.string(),
+		value: v.number(),
+		metadata: v.optional(v.object({
+			issueId: v.optional(v.string()),
+			callId: v.optional(v.string()),
+		})),
+	},
+	handler: async (ctx, { userId, value, metadata }) => {
+		if (!AUTUMN_SECRET_KEY) {
+			throw new Error("AUTUMN_SECRET_KEY is not configured");
+		}
+
+		if (value <= 0) {
+			return null;
+		}
+
+		const autumnSdk = new AutumnSDK({
+			secretKey: AUTUMN_SECRET_KEY,
+		});
+
+		const profile = await ctx.runQuery(
+			internal.orchestration.getSettingsForUserId,
+			{ userId },
+		);
+
+		const nameParts: string[] = [];
+		if (profile?.firstName) nameParts.push(profile.firstName);
+		if (profile?.lastName) nameParts.push(profile.lastName);
+
+		const customerData: { name?: string; email?: string } = {};
+		if (nameParts.length > 0) {
+			customerData.name = nameParts.join(" ");
+		}
+		if (profile?.email) {
+			customerData.email = profile.email;
+		}
+
+		try {
+			await autumnSdk.track({
+				customer_id: userId,
+				feature_id: VOICE_MINUTES_FEATURE_ID,
+				value,
+				...(Object.keys(customerData).length > 0 ? { customer_data: customerData } : {}),
+				...(metadata ? { properties: metadata } : {}),
+			});
+		} catch (error) {
+			console.error("[convex/actions/autumn] Failed to track voice usage", {
+				error,
+				userId,
+				metadata,
+			});
+		}
+
+		return null;
 	},
 });
 

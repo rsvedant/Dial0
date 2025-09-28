@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { api } from '@/convex/_generated/api'
-import { ConvexHttpClient } from 'convex/browser'
-
-const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL
-const convex = convexUrl ? new ConvexHttpClient(convexUrl) : null
+import { fetchQuery, fetchMutation } from 'convex/nextjs'
+import { getToken } from '@/lib/auth-server'
 
 // System prompt template provided by the user, with placeholders
 const SYSTEM_TEMPLATE = `You are a professional AI customer service representative calling companies on behalf of users to resolve their issues. You have full authority to act as the user's authorized representative.
@@ -87,14 +85,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'VAPI assistant/phone IDs not configured' }, { status: 500 })
     }
 
-  const { issueId, context: providedContext } = await req.json()
+  const { issueId, context: providedContext, authToken } = await req.json()
+
+    const token = authToken ?? (await getToken())
+    if (!token) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    }
 
     // Get context either from request or Convex latest for the issue
     let context: any = providedContext
-    if (!context && convex && issueId) {
+    if (!context && issueId) {
       try {
         // Query latest context and filter by issue if supplied
-        const latest = await convex.query(api.orchestration.latestContext, {})
+        const latest = await fetchQuery(api.orchestration.latestContext, {}, { token })
         if (latest && (!latest.issueId || latest.issueId === issueId)) context = latest.context
       } catch (e) {
         console.warn('Failed fetching latest context from Convex:', e)
@@ -125,7 +128,12 @@ export async function POST(req: NextRequest) {
   // otherwise fall back to this server's origin.
   const origin = req.headers.get('origin') || `${new URL(req.url).origin}`
   const baseWebhookUrl = process.env.VAPI_WEBHOOK_URL || `${origin}/api/vapi/webhook`
-  const webhookUrl = issueId ? `${baseWebhookUrl}?issueId=${encodeURIComponent(issueId)}` : baseWebhookUrl
+  const webhookUrl = (() => {
+    const url = new URL(baseWebhookUrl)
+    if (issueId) url.searchParams.set('issueId', issueId)
+    url.searchParams.set('authToken', token)
+    return url.toString()
+  })()
 
     // Compose Vapi call request (valid schema)
     // Normalize contact phone to E.164 if available
@@ -147,12 +155,10 @@ export async function POST(req: NextRequest) {
 
     // Fetch settings to determine voice override (transient assistant override)
     let settings: any | null = null
-    if (convex) {
-      try {
-        settings = await convex.query(api.orchestration.getSettings, {})
-      } catch (e) {
-        console.warn('Failed fetching settings from Convex:', e)
-      }
+    try {
+      settings = await fetchQuery(api.orchestration.getSettings, {}, { token })
+    } catch (e) {
+      console.warn('Failed fetching settings from Convex:', e)
     }
     const voiceOverride = settings?.voiceId
       ? { provider: '11labs', voiceId: settings.voiceId as string }
@@ -162,10 +168,10 @@ export async function POST(req: NextRequest) {
       assistantId: process.env.VAPI_PUBLIC_ASSISTANT_ID,
       phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID,
       // Ensure webhooks can correlate to our issue
-      metadata: issueId ? { issueId } : undefined,
+      metadata: issueId ? { issueId, authToken: token } : { authToken: token },
       customer: {
         // Destination number in E.164
-        number: '+14085815324',
+        number: '+14083341829',
       },
       assistantOverrides: {
         // Webhook for server messages (takes precedence per assistant.server.url)
@@ -222,23 +228,23 @@ export async function POST(req: NextRequest) {
     }
 
     // Persist a system message about the call start
-    if (convex && issueId) {
+    if (issueId) {
       try {
-        await convex.mutation(api.orchestration.appendMessage, {
+        await fetchMutation(api.orchestration.appendMessage, {
           issueId,
           role: 'system',
           content: `📞 Dialing ${context?.contact?.name || 'the service'} (${dialNumber}) about: ${context?.issue?.summary || 'your issue'}...`,
-        })
+        }, { token })
         // If available, persist monitor URLs and append a dev-only example transcript
         const monitor = json?.call?.monitor || json?.monitor
         if (monitor?.listenUrl || monitor?.controlUrl) {
           try {
-            await convex.mutation(api.orchestration.appendCallEvent, {
+            await fetchMutation(api.orchestration.appendCallEvent, {
               issueId,
               callId: json?.call?.id || json?.id,
               type: 'monitor',
               content: JSON.stringify({ listenUrl: monitor.listenUrl, controlUrl: monitor.controlUrl }),
-            })
+            }, { token })
           } catch {}
         }
       } catch {}

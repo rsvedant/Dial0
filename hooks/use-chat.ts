@@ -256,35 +256,7 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
           })
         }
 
-        // Auto-start the voice call with Vapi using dynamic context
-        try {
-          const startResp = await fetch('/api/vapi/start-call', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ issueId, context: data.context })
-          })
-          const startJson = await startResp.json().catch(() => ({}))
-          if (!startResp.ok) {
-            console.error('Failed to start Vapi call:', startJson)
-            await appendMessage({
-              issueId,
-              role: 'system',
-              content: `⚠️ Could not start the phone call automatically: ${startJson?.error || 'unknown error'}`,
-            })
-          } else {
-            await appendMessage({
-              issueId,
-              role: 'system',
-              content: '📞 Call initiated. I\'ll update you here with progress and outcome.',
-            })
-            if (data.callInitiated === false && data.callError) {
-              await appendMessage({ issueId, role: 'system', content: `FYI: Inkeep attempted auto-call but failed: ${data.callError}` })
-            }
-          }
-        } catch (err) {
-          console.error('Error while starting Vapi call:', err)
-          await appendMessage({ issueId, role: 'system', content: '⚠️ Error starting the call. You can try again shortly.' })
-        }
+        // Server-side Inkeep route triggers Vapi call; skip duplicate client call
       }
     } catch (error) {
       console.error('Inkeep integration failed:', error)

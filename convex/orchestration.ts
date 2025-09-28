@@ -53,6 +53,42 @@ export const createIssue = mutation({
 	},
 });
 
+export const recordVoiceMinutesUsage = mutation({
+	args: {
+		issueId: v.string(),
+		callId: v.optional(v.string()),
+		durationSec: v.optional(v.number()),
+		minutes: v.optional(v.number()),
+	},
+	handler: async (ctx, { issueId, callId, durationSec, minutes }) => {
+		const issue = await ctx.db.get(issueId as any) as any;
+		if (!issue?.userId) {
+			return { tracked: false, reason: "issue_not_found" };
+		}
+
+		const derivedMinutes = typeof minutes === "number"
+			? minutes
+			: (typeof durationSec === "number" && durationSec > 0
+				? Math.max(1, Math.ceil(durationSec / 60))
+				: null);
+
+		if (!derivedMinutes) {
+			return { tracked: false, reason: "no_duration" };
+		}
+
+		await ctx.scheduler.runAfter(0, internal.actions.autumn.trackVoiceMinutesUsage, {
+			userId: issue.userId,
+			value: derivedMinutes,
+			metadata: {
+				issueId,
+				...(callId ? { callId } : {}),
+			},
+		});
+
+		return { tracked: true, minutes: derivedMinutes };
+	},
+});
+
 export const listIssues = query({
 	args: {},
 	handler: async (ctx) => {

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ConvexHttpClient } from 'convex/browser'
+import { fetchMutation } from 'convex/nextjs'
 import { api } from '@/convex/_generated/api'
-
-const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL
-const convex = convexUrl ? new ConvexHttpClient(convexUrl) : null
+import { getToken } from '@/lib/auth-server'
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,32 +15,54 @@ export async function POST(req: NextRequest) {
     const type: string = event?.type || 'unknown'
     const callId: string | undefined = event?.call?.id || event?.callId
 
-    if (!convex || !issueId) {
+    const forwardedToken = (event?.metadata?.authToken || raw?.metadata?.authToken || url.searchParams.get('authToken')) as string | undefined
+    let token: string | null | undefined = forwardedToken && typeof forwardedToken === 'string' ? forwardedToken : null
+    if (!token) {
+      token = await getToken()
+    }
+
+    if (!issueId) {
       return NextResponse.json({ ok: true })
+    }
+
+    const mutate = async <TArgs extends object>(mutation: any, args: TArgs, label: string) => {
+      if (!token) {
+        console.warn('Skipping Convex mutation due to missing auth token', { mutation: label })
+        return
+      }
+      try {
+        await fetchMutation(mutation, args, { token })
+      } catch (err) {
+        console.error('Convex mutation failed', { mutation: label, err })
+      }
     }
 
     // Append human-friendly status updates to chat (minimal)
     const appendChat = async (content: string) => {
-      try {
-        await convex.mutation(api.orchestration.appendMessage, {
+      await mutate(
+        api.orchestration.appendMessage,
+        {
           issueId,
           role: 'system',
           content,
-        })
-      } catch {}
+        },
+        'orchestration.appendMessage',
+      )
     }
 
     // Store structured call event
     const appendEvent = async (payload: {
       type: string; role?: string; content?: string; status?: string
     }) => {
-      try {
-        await convex.mutation(api.orchestration.appendCallEvent, {
+      await mutate(
+        api.orchestration.appendCallEvent,
+        {
           issueId,
           callId,
           ...payload,
-        })
-      } catch {}
+        },
+        'orchestration.appendCallEvent',
+      )
     }
 
     if (type === 'call.started' || type === 'status-update' && (event?.status === 'started' || event?.status === 'in-progress')) {
@@ -74,6 +94,7 @@ export async function POST(req: NextRequest) {
       // Some providers include cost/duration on the call object
       const cost = event?.call?.cost ?? event?.cost
       const durationSec = event?.call?.durationSec ?? event?.durationSec ?? event?.call?.durationSeconds
+      const minutesUsed = typeof durationSec === 'number' ? Math.max(1, Math.ceil(durationSec / 60)) : undefined
 
       if (summary) await appendEvent({ type: 'status', status: `summary: ${summary}` })
       if (finalTranscript) await appendEvent({ type: 'transcript', role: 'final', content: finalTranscript })
@@ -82,6 +103,19 @@ export async function POST(req: NextRequest) {
           type: 'recording',
           content: JSON.stringify({ recordingUrl, cost, durationSec }),
         })
+      }
+
+      if (minutesUsed) {
+        await mutate(
+          api.orchestration.recordVoiceMinutesUsage,
+          {
+            issueId,
+            callId,
+            durationSec,
+            minutes: minutesUsed,
+          },
+          'orchestration.recordVoiceMinutesUsage',
+        )
       }
 
       // Append a formatted system message visible in the chat UI
@@ -95,9 +129,11 @@ export async function POST(req: NextRequest) {
       await appendChat(lines.join('\n'))
 
       // Only resolve the issue once the end-of-call report has been received
-      try {
-        await convex.mutation(api.orchestration.updateIssueStatus, { id: issueId as any, status: 'resolved' })
-      } catch {}
+      await mutate(
+        api.orchestration.updateIssueStatus,
+        { id: issueId as any, status: 'resolved' },
+        'orchestration.updateIssueStatus',
+      )
     }
 
     return NextResponse.json({ ok: true })

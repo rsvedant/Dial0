@@ -13,9 +13,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/hooks/use-toast"
 
 const ISSUE_FEATURE_ID = "issues"
+const VOICE_FEATURE_ID = "voice_minutes"
 const PLAN_SUMMARY_COPY: Record<string, string> = {
   plus_plan: "Default plan with a 2-week included trial for new customers.",
   pro_plan: "Pro unlocks higher limits, live voice escalation, and faster incident routing.",
@@ -98,13 +100,25 @@ function RedirectToSignIn() {
   return <BillingSkeleton />
 }
 
-function usageSummary(feature: any) {
+type UsageSummaryOptions = {
+  singular: string
+  plural: string
+  emptyMessage: string
+}
+
+const DEFAULT_USAGE_COPY: UsageSummaryOptions = {
+  singular: "issue",
+  plural: "issues",
+  emptyMessage: "Usage tracked once you start creating issues.",
+}
+
+function usageSummary(feature: any, options: UsageSummaryOptions = DEFAULT_USAGE_COPY) {
   if (!feature) {
     return {
       usage: 0,
       quota: 0,
       percentage: 0,
-      message: "Usage tracked once you start creating issues.",
+      message: options.emptyMessage,
     }
   }
 
@@ -115,7 +129,9 @@ function usageSummary(feature: any) {
   const denominator = quota && quota !== Number.POSITIVE_INFINITY ? quota : usage > 0 ? usage : 1
   const percentage = Math.min(100, Math.round((usage / denominator) * 100))
 
-  let message = `Tracked ${usage} issue${usage === 1 ? "" : "s"}`
+  const { singular, plural } = options
+  const unitLabel = usage === 1 ? singular : plural
+  let message = `Tracked ${usage} ${unitLabel}`
   if (quota === Number.POSITIVE_INFINITY) {
     message += " • Pay-as-you-go pricing"
   } else if (quota > 0) {
@@ -163,7 +179,17 @@ function BillingContent() {
 
   const plan = useMemo(() => currentPlan(customer), [customer])
   const issuesFeature = customer?.features?.[ISSUE_FEATURE_ID]
-  const usage = useMemo(() => usageSummary(issuesFeature), [issuesFeature])
+  const voiceFeature = customer?.features?.[VOICE_FEATURE_ID]
+  const issueUsage = useMemo(() => usageSummary(issuesFeature), [issuesFeature])
+  const voiceUsage = useMemo(
+    () =>
+      usageSummary(voiceFeature, {
+        singular: "voice minute",
+        plural: "voice minutes",
+        emptyMessage: "Voice usage appears once calls are completed.",
+      }),
+    [voiceFeature],
+  )
   const renewal = useMemo(() => nextRenewalAt(plan), [plan])
   const trialDays = useMemo(() => trialDaysLeft(plan), [plan])
   const hasPaymentMethod = Boolean(customer?.payment_method)
@@ -291,8 +317,15 @@ function BillingContent() {
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Issues this cycle</span>
                   <span className="font-medium">
-                    {usage.usage}
-                    {usage.quota && usage.quota !== Number.POSITIVE_INFINITY ? ` / ${usage.quota}` : ""}
+                    {issueUsage.usage}
+                    {issueUsage.quota && issueUsage.quota !== Number.POSITIVE_INFINITY ? ` / ${issueUsage.quota}` : ""}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Voice minutes tracked</span>
+                  <span className="font-medium">
+                    {voiceUsage.usage}
+                    {voiceUsage.quota && voiceUsage.quota !== Number.POSITIVE_INFINITY ? ` / ${voiceUsage.quota}` : voiceUsage.quota === Number.POSITIVE_INFINITY ? " • unlimited" : ""}
                   </span>
                 </div>
               </CardContent>
@@ -327,19 +360,37 @@ function BillingContent() {
                 <CardDescription className="text-sm">Stay ahead of limits and overages.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 pb-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span>Issues tracked</span>
-                  <span>
-                    {usage.usage}
-                    {usage.quota && usage.quota !== Number.POSITIVE_INFINITY
-                      ? ` / ${usage.quota}`
-                      : usage.quota === Number.POSITIVE_INFINITY
-                        ? " • unlimited"
-                        : ""}
-                  </span>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Issues tracked</span>
+                    <span>
+                      {issueUsage.usage}
+                      {issueUsage.quota && issueUsage.quota !== Number.POSITIVE_INFINITY
+                        ? ` / ${issueUsage.quota}`
+                        : issueUsage.quota === Number.POSITIVE_INFINITY
+                          ? " • unlimited"
+                          : ""}
+                    </span>
+                  </div>
+                  <Progress value={issueUsage.percentage} className="h-2" />
+                  <p className="text-xs text-muted-foreground leading-relaxed">{issueUsage.message}</p>
                 </div>
-                <Progress value={usage.percentage} className="h-2" />
-                <p className="text-xs text-muted-foreground leading-relaxed">{usage.message}</p>
+                <Separator className="bg-border/60" />
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Voice minutes</span>
+                    <span>
+                      {voiceUsage.usage}
+                      {voiceUsage.quota && voiceUsage.quota !== Number.POSITIVE_INFINITY
+                        ? ` / ${voiceUsage.quota}`
+                        : voiceUsage.quota === Number.POSITIVE_INFINITY
+                          ? " • unlimited"
+                          : ""}
+                    </span>
+                  </div>
+                  <Progress value={voiceUsage.percentage} className="h-2" />
+                  <p className="text-xs text-muted-foreground leading-relaxed">{voiceUsage.message}</p>
+                </div>
               </CardContent>
             </Card>
           </aside>
