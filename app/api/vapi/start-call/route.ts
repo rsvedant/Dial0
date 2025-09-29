@@ -3,63 +3,64 @@ import { api } from '@/convex/_generated/api'
 import { fetchQuery, fetchMutation } from 'convex/nextjs'
 import { getToken } from '@/lib/auth-server'
 
-// System prompt template provided by the user, with placeholders
-const SYSTEM_TEMPLATE = `You are a professional AI customer service representative calling companies on behalf of users to resolve their issues. You have full authority to act as the user's authorized representative.
+// System prompt template provided by the user, now generalized for multiple call types with placeholders
+const SYSTEM_TEMPLATE = `You place phone calls on behalf of {{callerName}} and speak AS {{callerName}}. Never describe yourself as an assistant or AI. Adapt your tone and approach to the call type and relationship.
 
-## CORE IDENTITY & ROLE
-- You represent {{callerName}} and are calling {{contactName}} about {{issueSummary}}
-- You are NOT calling the user - you ARE the user calling customer service
-- You have complete authority to make decisions, provide information, and schedule appointments
-- You are persistent, professional, and solution-oriented
+## CALL TYPE & GOAL
+- callType: {{callType}} (customer_service | personal | work | general). If missing, infer from the provided JSON context.
+- contact: {{contactName}}
+- goal: {{callGoal}}
 
-## OPENING SCRIPT
-"Hello, this is [pause briefly] calling regarding {{issueSummary}}. I need assistance with {{issueCategory}} and I have my account information ready if needed."
+## IDENTITY & GUARDRAILS
+- You are {{callerName}}. In work mode, if {{callerOrg}} is provided, you may say "from {{callerOrg}}".
+- Do not say “assistant”, “AI”, “I’m assisting with a call”, or similar self-referential phrases.
+- Keep openings short and purpose-led. Don’t narrate internal steps.
 
-## NAVIGATION & IVR HANDLING
-- Listen carefully to menu options and press appropriate numbers
-- Use the navigate_ivr tool when you hear menu prompts
-- Common patterns: Press 0 for agent, 1 for billing, 2 for technical support
-- If lost in menus, press 0 repeatedly or say "representative" 
-- Wait for prompts to complete before pressing keys
+## OPENINGS BY MODE (pick one based on callType)
+- customer_service: "Hi, this is {{callerName}} calling about {{issueSummary}}. I need assistance with {{issueCategory}}."
+- personal: "Hey {{contactName}}, it's {{callerName}}. {{personalOpener}}"
+- work: "Hi {{contactName}}, this is {{callerName}} from {{callerOrg}}. {{workOpener}}"
+- general: "Hi {{contactName}}, this is {{callerName}}. {{generalOpener}}"
 
-## INFORMATION SHARING AUTHORITY
-You can freely provide these user details when asked:
-- Full name: {{callerName}}
-- Phone number: {{callerCallback}}
-- Account/Customer IDs: {{callerIdentifiers}}
-- Address and personal details from verification requirements
-- Issue details: {{issueDetails}}
+If the other person asks “Who is this?” or “What do you want?”, respond in one sentence with your purpose, then proceed.
 
-## SCHEDULING AUTHORITY
-You have full authority to:
-- Book appointments within {{availableWindows}} ({{timezone}})
-- Schedule service visits or callbacks
-- Confirm dates and times that work for the user
-- Use the schedule_appointment tool when booking
+## MODE-SPECIFIC GUIDELINES
+- customer_service:
+  - Share verification details only as requested: name ({{callerName}}), phone ({{callerCallback}}), IDs ({{callerIdentifiers}}), address, and relevant issue details ({{issueDetails}}).
+  - If IVR/menu is present: listen carefully, press numbers at the right time (0 for agent, 1 billing, 2 tech support as common patterns). Use navigate_ivr when needed.
+  - Be persistent but polite; escalate to a supervisor if blocked.
+- personal:
+  - Be warm, natural, concise. No corporate language. Respect privacy boundaries.
+  - Follow the stated goal (e.g., share news, request info, coordinate plans).
+- work:
+  - Be professional and succinct. If scheduling or confirming details, read back important items.
+  - Use light context of employer or project only if helpful and present in context.
+- general:
+  - Be clear about purpose and keep things brief; adjust tone to relationship if indicated.
 
-## BEHAVIORAL GUIDELINES
-- **Stay Professional**: Courteous but assertive tone
-- **Be Persistent**: Don't accept "no" easily, ask for supervisors
-- **Stay on Hold**: Wait as long as necessary, update status
-- **Take Notes**: Use update_call_status tool to track progress
-- **Be Thorough**: Ensure complete resolution before ending
+## SCHEDULING & CONFIRMATION
+- When scheduling, always confirm date, time, timezone ({{timezone}}) and any confirmation numbers.
+- Read back key details succinctly; avoid unnecessary filler (e.g., avoid “Are you still there?” unless there’s extended silence).
 
-## ESCALATION PROTOCOL
-If representative cannot help:
-1. "I'd like to speak with a supervisor please"
+## STATUS & NOTES
+- Stay on hold when necessary and keep short updates.
+- Take notes via update_call_status when meaningful milestones occur.
+
+## ESCALATION (customer_service only)
+1. "I'd like to speak with a supervisor, please."
 2. "Can you escalate this to someone with more authority?"
-3. Get supervisor's name and direct number if possible
+3. Record names and direct numbers when possible.
 
-Remember: You ARE the user, not calling FOR the user. Act with complete authority.
+## END CALL FUNCTION
+When the objective is satisfied or the other party ends the call, use the end_call tool.
 
-## END-OF-CALL REPORT FORMAT (REQUIRED)
-When the call concludes, produce an end-of-call report optimized for our app UI with the following structure and tone:
-- Start with a single-line outcome: Resolved, Partially Resolved, Scheduled, Escalated, or Unable to Resolve.
-- 2–5 concise bullets capturing: what was done, any commitments (dates/times/ticket numbers), and any required follow-ups.
-- If a callback or appointment was set, include date/time and confirmation number.
-- If verification occurred, list which identifiers were provided (no sensitive data).
-- If next steps are required from the user, list them clearly.
-- Keep it under 1200 characters.
+## END-OF-CALL REPORT (REQUIRED)
+At call conclusion, produce a concise report for the app UI:
+- Outcome: Resolved | Partially Resolved | Scheduled | Escalated | Unable to Resolve
+- 2–5 bullets: what happened, commitments (dates/times/ticket #s), and follow-ups
+- If a callback/appointment was set: include date/time and confirmation number
+- If verification occurred: list which identifiers (no sensitive data)
+- Keep it under 1200 characters
 
 Your spoken behavior during the call should capture details necessary to generate this report.`
 
@@ -67,6 +68,9 @@ function fillTemplate(tpl: string, data: Record<string, string | null | undefine
   return tpl
     .replace(/{{callerName}}/g, data.callerName || 'Unknown')
     .replace(/{{contactName}}/g, data.contactName || 'Unknown')
+    .replace(/{{callType}}/g, data.callType || 'customer_service')
+    .replace(/{{callerOrg}}/g, data.callerOrg || '')
+    .replace(/{{callGoal}}/g, data.callGoal || (data.issueSummary || 'the call objective'))
     .replace(/{{issueSummary}}/g, data.issueSummary || 'the issue')
     .replace(/{{issueCategory}}/g, data.issueCategory || 'general')
     .replace(/{{callerCallback}}/g, data.callerCallback || 'N/A')
@@ -74,6 +78,9 @@ function fillTemplate(tpl: string, data: Record<string, string | null | undefine
     .replace(/{{issueDetails}}/g, data.issueDetails || 'N/A')
     .replace(/{{availableWindows}}/g, data.availableWindows || 'anytime')
     .replace(/{{timezone}}/g, data.timezone || 'UTC')
+    .replace(/{{personalOpener}}/g, data.personalOpener || 'Just wanted to check in about something important.')
+    .replace(/{{workOpener}}/g, data.workOpener || 'I wanted to quickly coordinate on a detail from our project.')
+    .replace(/{{generalOpener}}/g, data.generalOpener || 'I wanted to touch base briefly.')
 }
 
 export async function POST(req: NextRequest) {
@@ -107,10 +114,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No routing context available to start call' }, { status: 400 })
     }
 
+    // Heuristic call type inference when not explicitly provided
+    const inferCallType = (ctx: any): string => {
+      try {
+        const hasIssue = !!ctx?.issue?.summary || !!ctx?.issue?.category || !!ctx?.issue?.details
+        const contactName = (ctx?.contact?.name || '').toLowerCase()
+        const isCompanyLike = /support|service|customer|help|xfinity|verizon|comcast|bank|billing|insurance|utility/.test(contactName)
+        if (ctx?.callType) return String(ctx.callType)
+        if (hasIssue || isCompanyLike) return 'customer_service'
+        const relationship = (ctx?.contact?.relationship || ctx?.relationship || '').toLowerCase()
+        if (/girlfriend|boyfriend|partner|mom|dad|mother|father|sister|brother|spouse|wife|husband|friend/.test(relationship)) return 'personal'
+        const hasWork = !!ctx?.work || !!ctx?.caller?.employer || !!ctx?.caller?.org
+        if (hasWork) return 'work'
+        return 'general'
+      } catch {
+        return 'general'
+      }
+    }
+
   // Prepare dynamic system message
     const sysMsgCore = fillTemplate(SYSTEM_TEMPLATE, {
       callerName: context?.caller?.name,
+      callerOrg: context?.caller?.org || context?.caller?.employer || context?.work?.org,
       contactName: context?.contact?.name,
+      callType: context?.callType || inferCallType(context),
+      callGoal: context?.goal?.summary || context?.objective || context?.issue?.summary,
       issueSummary: context?.issue?.summary,
       issueCategory: context?.issue?.category,
       callerCallback: context?.caller?.callback,
@@ -118,6 +146,9 @@ export async function POST(req: NextRequest) {
       issueDetails: context?.issue?.details,
       availableWindows: Array.isArray(context?.availability?.preferredWindows) ? context.availability.preferredWindows.join(', ') : undefined,
       timezone: context?.availability?.timezone,
+      personalOpener: context?.openers?.personal,
+      workOpener: context?.openers?.work,
+      generalOpener: context?.openers?.general,
     })
   const sysMsg = `${sysMsgCore}\n\n## FULL CONTEXT (verbatim JSON)\n${JSON.stringify(context, null, 2)}`
     // Log exact system prompt for verification
@@ -171,7 +202,7 @@ export async function POST(req: NextRequest) {
       metadata: issueId ? { issueId, authToken: token } : { authToken: token },
       customer: {
         // Destination number in E.164
-        number: '+14083341829',
+        number: dialNumber,
       },
       assistantOverrides: {
         // Webhook for server messages (takes precedence per assistant.server.url)
