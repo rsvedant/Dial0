@@ -202,8 +202,6 @@ export async function POST(req: NextRequest) {
         },
         // Voice config
         voice: voiceOverride,
-        // Optional opening line
-        firstMessage: "Hello, I'm calling to resolve a customer service issue. I have all the necessary account information and am authorized to handle this matter. How may I proceed?",
         // Transcriber config
         transcriber: {
           provider: 'deepgram',

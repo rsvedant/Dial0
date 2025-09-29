@@ -93,7 +93,44 @@ export async function POST(req: NextRequest) {
       const recordingUrl: string | undefined = event?.recordingUrl
       // Some providers include cost/duration on the call object
       const cost = event?.call?.cost ?? event?.cost
-      const durationSec = event?.call?.durationSec ?? event?.durationSec ?? event?.call?.durationSeconds
+      let durationSec: number | undefined = event?.call?.durationSec ?? event?.durationSec ?? event?.call?.durationSeconds
+
+      // Fetch canonical call record from Vapi for precise duration when available
+      if (callId && process.env.VAPI_PRIVATE_API_KEY) {
+        try {
+          const callDetailsResp = await fetch(`https://api.vapi.ai/call/${encodeURIComponent(callId)}`, {
+            headers: {
+              Authorization: `Bearer ${process.env.VAPI_PRIVATE_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            cache: 'no-store',
+          })
+          if (callDetailsResp.ok) {
+            const callDetails = await callDetailsResp.json().catch(() => null)
+            const detail = callDetails?.call ?? callDetails
+            const startedAtIso: string | undefined = detail?.startedAt
+            const endedAtIso: string | undefined = detail?.endedAt
+            const startMs = startedAtIso ? Date.parse(startedAtIso) : NaN
+            const endMs = endedAtIso ? Date.parse(endedAtIso) : NaN
+            if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs >= startMs) {
+              durationSec = Math.max(0, Math.round((endMs - startMs) / 1000))
+            }
+            if (startedAtIso || endedAtIso) {
+              await appendEvent({
+                type: 'call-details',
+                content: JSON.stringify({ startedAt: startedAtIso, endedAt: endedAtIso, durationSec }),
+              })
+            }
+          } else {
+            console.warn('Failed to fetch Vapi call details', await callDetailsResp.text())
+          }
+        } catch (detailsError) {
+          console.error('Error fetching Vapi call duration', detailsError)
+        }
+      } else if (callId && !process.env.VAPI_PRIVATE_API_KEY) {
+        console.warn('VAPI_PRIVATE_API_KEY not configured; skipping call duration fetch')
+      }
+
       const minutesUsed = typeof durationSec === 'number' ? Math.max(1, Math.ceil(durationSec / 60)) : undefined
 
       if (summary) await appendEvent({ type: 'status', status: `summary: ${summary}` })
