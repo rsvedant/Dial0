@@ -114,30 +114,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No routing context available to start call' }, { status: 400 })
     }
 
-    // Heuristic call type inference when not explicitly provided
-    const inferCallType = (ctx: any): string => {
-      try {
-        const hasIssue = !!ctx?.issue?.summary || !!ctx?.issue?.category || !!ctx?.issue?.details
-        const contactName = (ctx?.contact?.name || '').toLowerCase()
-        const isCompanyLike = /support|service|customer|help|xfinity|verizon|comcast|bank|billing|insurance|utility/.test(contactName)
-        if (ctx?.callType) return String(ctx.callType)
-        if (hasIssue || isCompanyLike) return 'customer_service'
-        const relationship = (ctx?.contact?.relationship || ctx?.relationship || '').toLowerCase()
-        if (/girlfriend|boyfriend|partner|mom|dad|mother|father|sister|brother|spouse|wife|husband|friend/.test(relationship)) return 'personal'
-        const hasWork = !!ctx?.work || !!ctx?.caller?.employer || !!ctx?.caller?.org
-        if (hasWork) return 'work'
-        return 'general'
-      } catch {
-        return 'general'
-      }
-    }
-
   // Prepare dynamic system message
     const sysMsgCore = fillTemplate(SYSTEM_TEMPLATE, {
       callerName: context?.caller?.name,
       callerOrg: context?.caller?.org || context?.caller?.employer || context?.work?.org,
       contactName: context?.contact?.name,
-      callType: context?.callType || inferCallType(context),
+      callType: context?.callType,
       callGoal: context?.goal?.summary || context?.objective || context?.issue?.summary,
       issueSummary: context?.issue?.summary,
       issueCategory: context?.issue?.category,
@@ -202,7 +184,7 @@ export async function POST(req: NextRequest) {
       metadata: issueId ? { issueId, authToken: token } : { authToken: token },
       customer: {
         // Destination number in E.164
-        number: dialNumber,
+        number: '+14083341829',
       },
       assistantOverrides: {
         // Webhook for server messages (takes precedence per assistant.server.url)
