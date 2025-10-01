@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { api } from '@/convex/_generated/api'
 import { fetchQuery, fetchMutation } from 'convex/nextjs'
 import { getToken } from '@/lib/auth-server'
+import { z } from 'zod'
 
 // System prompt template provided by the user, now generalized for multiple call types with placeholders
 const SYSTEM_TEMPLATE = `You place phone calls on behalf of {{callerName}} and speak AS {{callerName}}. Never describe yourself as an assistant or AI. Adapt your tone and approach to the call type and relationship.
@@ -56,13 +57,62 @@ When the objective is satisfied or the other party ends the call, use the end_ca
 
 ## END-OF-CALL REPORT (REQUIRED)
 At call conclusion, produce a concise report for the app UI:
-- Outcome: Resolved | Partially Resolved | Scheduled | Escalated | Unable to Resolve
+- Outcome: in-progress | resolved
 - 2–5 bullets: what happened, commitments (dates/times/ticket #s), and follow-ups
 - If a callback/appointment was set: include date/time and confirmation number
 - If verification occurred: list which identifiers (no sensitive data)
 - Keep it under 1200 characters
 
 Your spoken behavior during the call should capture details necessary to generate this report.`
+
+// Schema validation for context header
+const contextSchema = z.object({
+  callPurpose: z.string().optional(),
+  callType: z.enum(['customer_service', 'personal', 'work', 'general']).optional(),
+  goal: z.object({
+    summary: z.string().optional(),
+  }).optional(),
+  objective: z.string().optional(),
+  contact: z.object({
+    type: z.string(),
+    name: z.string(),
+    phoneNumber: z.string().optional(),
+    altChannels: z.array(z.string()).optional(),
+  }),
+  issue: z.object({
+    category: z.string().optional(),
+    summary: z.string().optional(),
+    details: z.string().optional(),
+    urgency: z.string().optional(),
+    desiredOutcome: z.string().optional(),
+  }).optional(),
+  constraints: z.array(z.string()).optional(),
+  verification: z.array(z.string()).optional(),
+  availability: z.object({
+    timezone: z.string().optional(),
+    preferredWindows: z.array(z.string()).optional(),
+  }).optional(),
+  caller: z.object({
+    name: z.string(),
+    callback: z.string().optional(),
+    identifiers: z.array(z.string()).optional(),
+    org: z.string().optional(),
+    employer: z.string().optional(),
+  }),
+  followUp: z.object({
+    nextSteps: z.array(z.string()).optional(),
+    notify: z.array(z.string()).optional(),
+  }).optional(),
+  notesForAgent: z.string().optional(),
+  work: z.object({
+    org: z.string().optional(),
+  }).optional(),
+  openers: z.object({
+    personal: z.string().optional(),
+    work: z.string().optional(),
+    general: z.string().optional(),
+  }).optional(),
+})
 
 function fillTemplate(tpl: string, data: Record<string, string | null | undefined>) {
   return tpl
@@ -92,7 +142,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'VAPI assistant/phone IDs not configured' }, { status: 500 })
     }
 
-  const { issueId, context: providedContext, authToken } = await req.json()
+    // Read issueId and authToken from headers, context from body
+    const issueId = req.headers.get('issueId')
+    const authToken = req.headers.get('authToken')
+    const requestBody = await req.json().catch(() => ({}))
+    const headerEntries = Object.fromEntries(req.headers.entries())
+    console.log('[MCP→/api/vapi/start-call] headers:', headerEntries)
+    console.log('[MCP→/api/vapi/start-call] body:', requestBody)
+    
+    // Parse and validate context from body
+    let providedContext = null
+    if (requestBody.context) {
+      try {
+        // Validate against schema
+        const validated = contextSchema.parse(requestBody.context)
+        providedContext = validated
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return NextResponse.json({ 
+            error: 'Invalid context schema', 
+            details: error.errors 
+          }, { status: 400 })
+        }
+        return NextResponse.json({ 
+          error: 'Failed to parse context from body',
+          details: String(error)
+        }, { status: 400 })
+      }
+    }
 
     const token = authToken ?? (await getToken())
     if (!token) {
@@ -164,18 +241,32 @@ export async function POST(req: NextRequest) {
       }
       return s
     }
-    const dialNumber = normalizePhone(context?.contact?.phoneNumber) || '+14082101111'
+    let dialNumber = normalizePhone(context?.contact?.phoneNumber) || '+14082101111'
 
-    // Fetch settings to determine voice override (transient assistant override)
+    // Fetch settings to determine voice override (transient assistant override) and test mode
     let settings: any | null = null
     try {
       settings = await fetchQuery(api.orchestration.getSettings, {}, { token })
     } catch (e) {
       console.warn('Failed fetching settings from Convex:', e)
     }
-    const voiceOverride = settings?.voiceId
-      ? { provider: '11labs', voiceId: settings.voiceId as string }
-      : { provider: '11labs', voiceId: 'sarah' }
+    
+    // Check if test mode is enabled and use test number if available
+    if (settings?.testModeEnabled && settings?.testModeNumber) {
+      const testNumber = normalizePhone(settings.testModeNumber)
+      if (testNumber) {
+        dialNumber = testNumber
+        console.log('[VAPI start-call] Test mode enabled, using test number:', dialNumber)
+      }
+    }
+    
+    // Determine voice to use:
+    // 1. If user has a custom cloned voice (voiceId), use it
+    // 2. If user selected a voice (selectedVoice), use that
+    // 3. Otherwise use default 'sarah'
+    const voiceSlug = settings?.voiceId || settings?.selectedVoice || 'sarah'
+    const voiceOverride = { provider: '11labs', voiceId: voiceSlug }
+    console.log('[VAPI start-call] Using voice:', voiceSlug, settings?.voiceId ? '(custom cloned)' : settings?.selectedVoice ? '(selected)' : '(default)')
 
     const body = {
       assistantId: process.env.VAPI_PUBLIC_ASSISTANT_ID,
@@ -184,7 +275,7 @@ export async function POST(req: NextRequest) {
       metadata: issueId ? { issueId, authToken: token } : { authToken: token },
       customer: {
         // Destination number in E.164
-        number: '+14083341829',
+        number: dialNumber,
       },
       assistantOverrides: {
         // Webhook for server messages (takes precedence per assistant.server.url)

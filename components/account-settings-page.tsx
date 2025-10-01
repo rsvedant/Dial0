@@ -9,12 +9,55 @@ import { Logo } from "@/components/logo"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 import { Menu, Plus, CheckCircle2, MailWarning } from "lucide-react"
 import type { IssueListItem } from "@/types/issue"
 import { RedirectToSignIn, SignedIn } from "@daveyplate/better-auth-ui"
 import { motion } from "framer-motion"
+import { VoiceSelector } from "@/components/voice-selector"
+
+const FALLBACK_TIMEZONES = [
+  "Pacific/Honolulu",
+  "America/Anchorage",
+  "America/Los_Angeles",
+  "America/Phoenix",
+  "America/Denver",
+  "America/Chicago",
+  "America/New_York",
+  "America/Sao_Paulo",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "Europe/Madrid",
+  "Europe/Rome",
+  "Europe/Warsaw",
+  "Africa/Johannesburg",
+  "Asia/Dubai",
+  "Asia/Kolkata",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "Asia/Shanghai",
+  "Australia/Sydney",
+]
+
+const RAW_TIMEZONES: string[] = typeof Intl.supportedValuesOf === "function"
+  ? (Intl.supportedValuesOf("timeZone") as string[])
+  : FALLBACK_TIMEZONES
+
+const TIMEZONE_OPTIONS: { value: string; label: string }[] = RAW_TIMEZONES
+  .slice()
+  .sort((a, b) => a.localeCompare(b))
+  .map((tz) => ({
+    value: tz,
+    label: tz.replace(/_/g, " "),
+  }))
+
+const INPUT_FOCUS_CLASS = "placeholder:text-neutral-500 focus-visible:ring-transparent focus-visible:border-foreground/40 focus:outline-none"
+const SELECT_TRIGGER_CLASS = "focus-visible:ring-transparent focus-visible:border-foreground/40 focus:outline-none"
 
 // Local card wrapper to mimic Better Auth UI styling for custom fields
 function FieldRow({
@@ -116,6 +159,9 @@ export function AccountSettingsPage() {
     phone: "",
     address: "",
     selectedVoice: "",
+    timezone: browserTimezone,
+    testModeEnabled: false,
+    testModeNumber: "",
   })
   const initialRef = React.useRef<typeof values | null>(null)
   const [saving, setSaving] = React.useState<{ [K in keyof typeof values]?: boolean }>({})
@@ -130,12 +176,13 @@ export function AccountSettingsPage() {
       phone: existing.phone ?? "",
       address: existing.address ?? "",
       selectedVoice: existing.selectedVoice ?? "",
+      timezone: existing.timezone ?? browserTimezone,
+      testModeEnabled: existing.testModeEnabled ?? false,
+      testModeNumber: existing.testModeNumber ?? "",
     }
     setValues(next)
     if (!initialRef.current) initialRef.current = next
   }, [existing])
-
-  const displayedTimezone = existing?.timezone ?? browserTimezone
 
   const dirty = (field: keyof typeof values) => {
     if (!initialRef.current) return false
@@ -204,15 +251,23 @@ export function AccountSettingsPage() {
                 <section>
                   <h2 className="text-base font-semibold">Voice Assistant</h2>
                   <p className="text-sm text-muted-foreground">Configure your preferred voice</p>
-                  <div className="mt-4 flex items-center gap-3">
+                  <div className="mt-4 flex flex-col gap-3">
+                    <FieldRow label="Selected Voice" dirty={dirty("selectedVoice")} saving={!!saving.selectedVoice} onSave={() => saveField("selectedVoice")}>
+                      <VoiceSelector
+                        value={values.selectedVoice}
+                        onChange={(value) => setValues(v => ({ ...v, selectedVoice: value }))}
+                        userVoiceId={existing?.voiceId}
+                        userVoiceName={values.firstName ? `${values.firstName}'s Voice` : "Your Voice"}
+                      />
+                    </FieldRow>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => router.push("/account/create-voice")}
-                      className="flex items-center gap-2"
+                      className="flex items-center gap-2 w-fit"
                     >
                       <Plus className="h-4 w-4" />
-                      Create New Voice
+                      Create Custom Voice
                     </Button>
                   </div>
                 </section>
@@ -239,13 +294,13 @@ export function AccountSettingsPage() {
                   <p className="text-sm text-muted-foreground">Your basic profile details</p>
                   <div className="mt-4 divide-y">
                     <FieldRow label="First name" dirty={dirty("firstName")} saving={!!saving.firstName} onSave={() => saveField("firstName")}> 
-                      <Input value={values.firstName} onChange={(e) => setValues(v => ({ ...v, firstName: e.target.value }))} placeholder="Jane" autoComplete="given-name" />
+                      <Input value={values.firstName} onChange={(e) => setValues(v => ({ ...v, firstName: e.target.value }))} placeholder="Jane" autoComplete="given-name" className={INPUT_FOCUS_CLASS} />
                     </FieldRow>
                     <FieldRow label="Last name" dirty={dirty("lastName")} saving={!!saving.lastName} onSave={() => saveField("lastName")}> 
-                      <Input value={values.lastName} onChange={(e) => setValues(v => ({ ...v, lastName: e.target.value }))} placeholder="Doe" autoComplete="family-name" />
+                      <Input value={values.lastName} onChange={(e) => setValues(v => ({ ...v, lastName: e.target.value }))} placeholder="Doe" autoComplete="family-name" className={INPUT_FOCUS_CLASS} />
                     </FieldRow>
                     <FieldRow label="Date of birth" dirty={dirty("birthdate")} saving={!!saving.birthdate} onSave={() => saveField("birthdate")}> 
-                      <Input type="date" value={values.birthdate} onChange={(e) => setValues(v => ({ ...v, birthdate: e.target.value }))} autoComplete="bday" />
+                      <Input type="date" value={values.birthdate} onChange={(e) => setValues(v => ({ ...v, birthdate: e.target.value }))} autoComplete="bday" className={INPUT_FOCUS_CLASS} />
                     </FieldRow>
                   </div>
                 </motion.section>
@@ -255,17 +310,47 @@ export function AccountSettingsPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.15 }}
                 >
-                  <h2 className="text-base font-semibold">Contact information</h2>
-                  <p className="text-sm text-muted-foreground">How we can reach you</p>
+                  <h2 className="text-base font-semibold">Preferences</h2>
+                  <p className="text-sm text-muted-foreground">Regional preferences & testing</p>
                   <div className="mt-4 divide-y">
-                    <FieldRow label="Email" dirty={dirty("email")} saving={!!saving.email} onSave={() => saveField("email")}> 
-                      <Input type="email" value={values.email} onChange={(e) => setValues(v => ({ ...v, email: e.target.value }))} placeholder="jane.doe@example.com" autoComplete="email" />
+                    <FieldRow label="Time zone" dirty={dirty("timezone")} saving={!!saving.timezone} onSave={() => saveField("timezone")}>
+                      <Select
+                        value={values.timezone}
+                        onValueChange={(value) => setValues((v) => ({ ...v, timezone: value }))}
+                      >
+                        <SelectTrigger className={cn("w-full", SELECT_TRIGGER_CLASS)}>
+                          <SelectValue placeholder="Select a time zone" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-64">
+                          {TIMEZONE_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </FieldRow>
-                    <FieldRow label="Phone" dirty={dirty("phone")} saving={!!saving.phone} onSave={() => saveField("phone")}> 
-                      <Input type="tel" value={values.phone} onChange={(e) => setValues(v => ({ ...v, phone: e.target.value }))} placeholder="(555) 123-4567" autoComplete="tel" />
+                    <FieldRow label="Test mode" dirty={dirty("testModeEnabled")} saving={!!saving.testModeEnabled} onSave={() => saveField("testModeEnabled")}>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Switch
+                          checked={values.testModeEnabled}
+                          onCheckedChange={(checked) => setValues((v) => ({ ...v, testModeEnabled: checked }))}
+                        />
+                        <span className="text-sm text-muted-foreground">
+                          {values.testModeEnabled ? "Enabled" : "Disabled"}
+                        </span>
+                      </div>
                     </FieldRow>
-                    <FieldRow label="Address" dirty={dirty("address")} saving={!!saving.address} onSave={() => saveField("address")}> 
-                      <Input value={values.address} onChange={(e) => setValues(v => ({ ...v, address: e.target.value }))} placeholder="123 Main St, City, State" autoComplete="street-address" />
+                    <FieldRow label="Test phone number" dirty={dirty("testModeNumber")} saving={!!saving.testModeNumber} onSave={() => saveField("testModeNumber")}>
+                      <Input
+                        type="tel"
+                        value={values.testModeNumber}
+                        onChange={(e) => setValues((v) => ({ ...v, testModeNumber: e.target.value }))}
+                        placeholder="+1 (555) 123-4567"
+                        disabled={!values.testModeEnabled}
+                        autoComplete="tel"
+                        className={INPUT_FOCUS_CLASS}
+                      />
                     </FieldRow>
                   </div>
                 </motion.section>
@@ -275,15 +360,18 @@ export function AccountSettingsPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.2 }}
                 >
-                  <h2 className="text-base font-semibold">Preferences</h2>
-                  <p className="text-sm text-muted-foreground">Regional preferences</p>
+                  <h2 className="text-base font-semibold">Contact information</h2>
+                  <p className="text-sm text-muted-foreground">How we can reach you</p>
                   <div className="mt-4 divide-y">
-                    <div className="grid gap-4 sm:grid-cols-3 items-start py-3">
-                      <Label className="sm:mt-2 text-sm font-medium">Time zone</Label>
-                      <div className="sm:col-span-2">
-                        <Input readOnly value={displayedTimezone} />
-                      </div>
-                    </div>
+                    <FieldRow label="Email" dirty={dirty("email")} saving={!!saving.email} onSave={() => saveField("email")}>
+                      <Input type="email" value={values.email} onChange={(e) => setValues(v => ({ ...v, email: e.target.value }))} placeholder="jane.doe@example.com" autoComplete="email" className={INPUT_FOCUS_CLASS} />
+                    </FieldRow>
+                    <FieldRow label="Phone" dirty={dirty("phone")} saving={!!saving.phone} onSave={() => saveField("phone")}>
+                      <Input type="tel" value={values.phone} onChange={(e) => setValues(v => ({ ...v, phone: e.target.value }))} placeholder="(555) 123-4567" autoComplete="tel" className={INPUT_FOCUS_CLASS} />
+                    </FieldRow>
+                    <FieldRow label="Address" dirty={dirty("address")} saving={!!saving.address} onSave={() => saveField("address")}>
+                      <Input value={values.address} onChange={(e) => setValues(v => ({ ...v, address: e.target.value }))} placeholder="123 Main St, City, State" autoComplete="street-address" className={INPUT_FOCUS_CLASS} />
+                    </FieldRow>
                   </div>
                 </motion.section>
               </div>

@@ -8,6 +8,7 @@ export default defineSchema({
 		title: v.string(),
 		status: v.union(v.literal("open"), v.literal("in-progress"), v.literal("resolved")),
 		createdAt: v.string(), // ISO timestamp
+		chatId: v.optional(v.string()), // Agent conversationId (keeping field name for compatibility)
 	})
 		.index("by_createdAt", ["createdAt"]) // legacy / wide queries (optional retain)
 		.index("by_userId_createdAt", ["userId", "createdAt"]),
@@ -22,6 +23,8 @@ export default defineSchema({
 		timezone: v.optional(v.string()),
 		voiceId: v.optional(v.string()),
 		selectedVoice: v.optional(v.string()),
+		testModeEnabled: v.optional(v.boolean()),
+		testModeNumber: v.optional(v.string()),
 		updatedAt: v.string(), // ISO timestamp
 	})
 		.index("by_updatedAt", ["updatedAt"]) // existing global index

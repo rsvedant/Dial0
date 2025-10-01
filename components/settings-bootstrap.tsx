@@ -7,11 +7,14 @@ import { useQuery, useMutation } from "convex/react";
 /**
  * SettingsBootstrap
  * Ensures a settings document exists for the current authenticated user.
+ * Auto-detects and saves timezone on first run.
  * Surfaces minimal debug info (only in dev) via a small corner badge.
  */
 export function SettingsBootstrap() {
   const [didRun, setDidRun] = useState(false);
   const getOrCreate = useMutation(api.orchestration.getOrCreateSettings);
+  const saveSettings = useMutation(api.orchestration.saveSettings);
+  const settings = useQuery(api.orchestration.getSettings, {} as any);
   const debugAll = useQuery(api.orchestration.debugAllMySettings, {} as any);
   const debugShape = useQuery(api.orchestration.debugAuthUserShape, {} as any);
   const pendingRef = useRef(false);
@@ -24,7 +27,20 @@ export function SettingsBootstrap() {
     pendingRef.current = true;
     (async () => {
       try {
-        await getOrCreate();
+        const result = await getOrCreate();
+        
+        // Auto-detect and save timezone if not already set
+        if (result?.settings && !result.settings.timezone) {
+          try {
+            const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (detectedTimezone) {
+              await saveSettings({ timezone: detectedTimezone });
+              console.log('[SettingsBootstrap] Auto-detected and saved timezone:', detectedTimezone);
+            }
+          } catch (e) {
+            console.warn('[SettingsBootstrap] Failed to auto-detect timezone', e);
+          }
+        }
       } catch (e) {
         console.warn('[SettingsBootstrap] getOrCreate error', e);
       } finally {
@@ -32,7 +48,7 @@ export function SettingsBootstrap() {
         pendingRef.current = false;
       }
     })();
-  }, [debugShape, getOrCreate, didRun]);
+  }, [debugShape, getOrCreate, saveSettings, didRun]);
 
   if (process.env.NODE_ENV !== 'development') return null;
   return (

@@ -74,6 +74,10 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
               firstName = parts[0];
               lastName = parts.slice(1).join(" ") || undefined;
             }
+            // Attempt to get timezone from authUser metadata or use a default
+            // Note: The actual timezone will be detected and updated by SettingsBootstrap on the client
+            const timezone = (authUser as any).timezone || undefined;
+            
             const doc = {
               userId,
               email: authUser.email || undefined,
@@ -82,9 +86,9 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
               address: undefined,
               birthdate: undefined,
               phone: undefined,
-              timezone: undefined,
+              timezone,
               voiceId: undefined,
-              selectedVoice: undefined,
+              selectedVoice: "cgSgspJ2msm6clMCkdW9", // Default: Jessica (popular 11Labs voice)
               updatedAt,
             };
             const insertedId = await ctx.db.insert("settings", doc as any);

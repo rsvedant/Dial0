@@ -110,10 +110,15 @@ interface ChatInterfaceProps {
   knownContext?: any
 }
 
-interface ExtendedMessage extends Message {
-  type?: "text" | "system" | "transcript" | "status" | "info"
+interface ExtendedMessage {
+  id: string
+  content: string
+  sender: 'user' | 'system'
+  timestamp: Date
+  type?: "text" | "system" | "transcript" | "status" | "info" | "data-summary" | "data-operation" | "data-component" | "data-artifact"
   transcript?: { user: string; system: string }[]
   isExpanded?: boolean
+  data?: any
 }
 
 const statusConfig = {
@@ -138,20 +143,16 @@ const messageTypeConfig = {
   text: { icon: MessageCircle, bgClass: "bg-card", borderClass: "border-border" },
   system: { icon: Bot, bgClass: "bg-blue-50 dark:bg-blue-950/30", borderClass: "border-blue-200 dark:border-blue-800" },
   transcript: {
-    icon: FileText,
-    bgClass: "bg-amber-50 dark:bg-amber-950/30",
-    borderClass: "border-amber-200 dark:border-amber-800",
-  },
-  status: {
-    icon: CheckCircle,
-    bgClass: "bg-green-50 dark:bg-green-950/30",
-    borderClass: "border-green-200 dark:border-green-800",
-  },
-  info: {
-    icon: Info,
+    icon: Radio,
     bgClass: "bg-purple-50 dark:bg-purple-950/30",
     borderClass: "border-purple-200 dark:border-purple-800",
   },
+  status: { icon: Info, bgClass: "bg-yellow-50 dark:bg-yellow-950/30", borderClass: "border-yellow-200 dark:border-yellow-800" },
+  info: { icon: CheckCircle, bgClass: "bg-green-50 dark:bg-green-950/30", borderClass: "border-green-200 dark:border-green-800" },
+  'data-summary': { icon: Sparkles, bgClass: "bg-cyan-50 dark:bg-cyan-950/30", borderClass: "border-cyan-200 dark:border-cyan-800" },
+  'data-operation': { icon: Info, bgClass: "bg-gray-50 dark:bg-gray-950/30", borderClass: "border-gray-200 dark:border-gray-800" },
+  'data-component': { icon: FileText, bgClass: "bg-indigo-50 dark:bg-indigo-950/30", borderClass: "border-indigo-200 dark:border-indigo-800" },
+  'data-artifact': { icon: FileText, bgClass: "bg-emerald-50 dark:bg-emerald-950/30", borderClass: "border-emerald-200 dark:border-emerald-800" },
 }
 
 export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }: ChatInterfaceProps) {
@@ -159,11 +160,10 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
   const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(new Set())
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
-  const playNodeRef = useRef<AudioWorkletNode | ScriptProcessorNode | null>(null)
-  const pcmQueueRef = useRef<Float32Array[]>([])
-  const inputSampleRateRef = useRef<number>(48000) // default to 16 kHz PCM; will auto-detect via headers/control messages
+  const pcmBufferRef = useRef<Int16Array[]>([]) // Store PCM chunks
   const [isListeningLive, setIsListeningLive] = useState(false)
   const [recordingUrlByMsg, setRecordingUrlByMsg] = useState<Record<string, string | undefined>>({})
 
@@ -212,6 +212,16 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
     scrollToBottom()
   }, [enhancedMessages])
 
+  // Auto-focus input after AI stops replying
+  useEffect(() => {
+    if (!isLoading && inputRef.current) {
+      // Small delay to ensure message is rendered
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 100)
+    }
+  }, [isLoading])
+
   // Adjust for iOS keyboard to avoid layout jumps
   useEffect(() => {
     if (typeof window === "undefined" || !(window as any).visualViewport) return
@@ -258,25 +268,32 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
     }
   }
 
-  const StatusIcon = statusConfig[issue.status].icon
+  const StatusIcon = statusConfig[issue.status as keyof typeof statusConfig]?.icon || MessageCircle
 
-  // Small PCM player: consume Int16 PCM and play via WebAudio
+  // Simple PCM player following Vapi docs approach
   const ensureAudioContext = () => {
-    // Use default hardware sample rate (commonly 44100/48000).
-    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+    }
     return audioCtxRef.current
   }
-  const playPcmInt16 = (int16: Int16Array, srcSampleRate?: number) => {
+
+  const playPcmChunk = (pcmData: Int16Array) => {
     const ctx = ensureAudioContext()
     if (ctx.state === 'suspended') {
-      // Resume on user gesture (the click that triggered listen)
       void ctx.resume().catch(() => {})
     }
-    const rate = srcSampleRate || inputSampleRateRef.current || 16000
-    // Create buffer with the ORIGINAL source sample rate; WebAudio will resample to ctx.sampleRate.
-    const audioBuffer = ctx.createBuffer(1, int16.length, rate)
+    
+    // Vapi sends raw PCM at 16kHz mono (standard for telephony)
+    const sampleRate = 16000
+    const audioBuffer = ctx.createBuffer(1, pcmData.length, sampleRate)
     const channel = audioBuffer.getChannelData(0)
-    for (let i = 0; i < int16.length; i++) channel[i] = int16[i] / 32768
+    
+    // Convert Int16 to Float32 [-1, 1]
+    for (let i = 0; i < pcmData.length; i++) {
+      channel[i] = pcmData[i] / 32768
+    }
+    
     const source = ctx.createBufferSource()
     source.buffer = audioBuffer
     source.connect(ctx.destination)
@@ -285,62 +302,40 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
 
   const startListening = (listenUrl: string) => {
     if (wsRef.current) stopListening()
+    
+    pcmBufferRef.current = [] // Reset buffer
+    
     try {
       const ws = new WebSocket(listenUrl)
       ws.binaryType = 'arraybuffer'
-      ws.onopen = () => setIsListeningLive(true)
-      ws.onmessage = async (evt) => {
-        const data: any = evt.data
-        if (data instanceof ArrayBuffer) {
-          // Try to detect WAV header to extract sample rate
-          let buf = data
-          let srcRate = inputSampleRateRef.current
-          if (data.byteLength >= 44) {
-            const view = new DataView(data)
-            // 'RIFF' and 'WAVE'
-            if (view.getUint32(0, false) === 0x52494646 && view.getUint32(8, false) === 0x57415645) {
-              // Sample rate at byte offset 24 (little endian)
-              const rate = view.getUint32(24, true)
-              if (rate && rate > 0 && rate < 192000) srcRate = rate
-              // Basic WAV header is typically 44 bytes; skip header for PCM data
-              buf = data.slice(44)
-            }
-          }
-          const int16 = new Int16Array(buf)
-          playPcmInt16(int16, srcRate)
-        } else if (data instanceof Blob) {
-          const buf = await data.arrayBuffer()
-          // Same WAV detection for Blob
-          let raw = buf
-          let srcRate = inputSampleRateRef.current
-          if (buf.byteLength >= 44) {
-            const view = new DataView(buf)
-            if (view.getUint32(0, false) === 0x52494646 && view.getUint32(8, false) === 0x57415645) {
-              const rate = view.getUint32(24, true)
-              if (rate && rate > 0 && rate < 192000) srcRate = rate
-              raw = buf.slice(44)
-            }
-          }
-          const int16 = new Int16Array(raw)
-          playPcmInt16(int16, srcRate)
-        } else if (typeof data === 'string') {
-          // Try to parse control messages for sampleRate hints
-          try {
-            const msg = JSON.parse(data)
-            const rate = msg?.sampleRate || msg?.samplerate || msg?.format?.sampleRate
-            if (typeof rate === 'number' && rate > 0 && rate < 192000) {
-              inputSampleRateRef.current = rate
-            }
-          } catch {
-            // non-JSON control message; ignore
-          }
+      
+      ws.onopen = () => {
+        console.log('📞 Live audio stream connected')
+        setIsListeningLive(true)
+      }
+      
+      ws.onmessage = (evt) => {
+        if (evt.data instanceof ArrayBuffer) {
+          // Raw PCM data from Vapi
+          const pcmChunk = new Int16Array(evt.data)
+          pcmBufferRef.current.push(pcmChunk) // Store for potential saving
+          playPcmChunk(pcmChunk) // Play immediately
         }
       }
-      ws.onclose = () => setIsListeningLive(false)
-      ws.onerror = () => setIsListeningLive(false)
+      
+      ws.onclose = () => {
+        console.log('📞 Live audio stream closed')
+        setIsListeningLive(false)
+      }
+      
+      ws.onerror = (err) => {
+        console.error('📞 Live audio stream error:', err)
+        setIsListeningLive(false)
+      }
+      
       wsRef.current = ws
     } catch (e) {
-      console.error('Failed to open listen WebSocket', e)
+      console.error('Failed to open live audio WebSocket:', e)
       setIsListeningLive(false)
     }
   }
@@ -551,11 +546,12 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
             {/* Input with Send Button */}
             <div className="flex-1 relative">
               <Input
+                ref={inputRef}
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Type your message..."
-                className="h-12 text-sm px-4 pr-14 rounded-2xl border-border/50 focus:border-primary/50 ios-transition focus:scale-[1.01] shadow-sm bg-background/80 backdrop-blur-sm"
+                className="h-12 text-sm px-4 pr-14 rounded-2xl border-border/50 focus:border-border focus:ring-0 focus:ring-offset-0 focus:outline-none ios-transition focus:scale-[1.01] shadow-sm bg-background/80 backdrop-blur-sm"
                 disabled={isLoading}
               />
               <Button

@@ -16,6 +16,8 @@ async function requireUserId(ctx: any): Promise<string> {
 	throw new Error("Not authenticated");
 }
 
+const E164_REGEX = /^\+[1-9]\d{1,14}$/;
+
 // Issues CRUD (Convex tutorial style)
 export const createIssue = mutation({
 	args: {
@@ -23,6 +25,39 @@ export const createIssue = mutation({
 	},
 	handler: async (ctx, { title }) => {
 		const userId = await requireUserId(ctx);
+		
+		// Validate that user has filled out required settings
+		const settings = await ctx.db
+			.query("settings")
+			.withIndex("by_userId_updatedAt", (q) => q.eq("userId", userId))
+			.order("desc")
+			.take(1);
+		
+		const userSettings = settings[0];
+		if (!userSettings) {
+			throw new Error("Please complete your account settings before creating an issue.");
+		}
+		
+		// Check required fields (excluding testModeEnabled)
+		const requiredFields = ['firstName', 'lastName', 'email', 'phone', 'address', 'birthdate', 'timezone'];
+		const missingFields: string[] = [];
+		
+		for (const field of requiredFields) {
+			const value = (userSettings as any)[field];
+			if (!value || (typeof value === 'string' && value.trim().length === 0)) {
+				missingFields.push(field);
+			}
+		}
+		
+		// If test mode is enabled, phone number is required
+		if (userSettings.testModeEnabled && (!userSettings.testModeNumber || userSettings.testModeNumber.trim().length === 0)) {
+			missingFields.push('testModeNumber (required when test mode is enabled)');
+		}
+		
+		if (missingFields.length > 0) {
+			throw new Error(`Please complete these required settings before creating an issue: ${missingFields.join(', ')}`);
+		}
+		
 		const [existing] = await ctx.db
 			.query("issues")
 			.withIndex("by_userId_createdAt", (q) => q.eq("userId", userId))
@@ -119,6 +154,17 @@ export const updateIssueStatus = mutation({
 		if (!existing || existing.userId !== userId) throw new Error("Issue not found");
 		await ctx.db.patch(id, { status });
 		return { id, status };
+	},
+});
+
+export const updateIssueChatId = mutation({
+	args: { id: v.id("issues"), chatId: v.string() },
+	handler: async (ctx, { id, chatId }) => {
+		const userId = await requireUserId(ctx);
+		const existing = await ctx.db.get(id);
+		if (!existing || existing.userId !== userId) throw new Error("Issue not found");
+		await ctx.db.patch(id, { chatId });
+		return { id, chatId };
 	},
 });
 
@@ -320,6 +366,7 @@ export const getOrCreateSettings = mutation({
 			lastName = parts.slice(1).join(' ') || undefined;
 		}
 		const updatedAt = new Date().toISOString();
+		// Note: Timezone will be auto-detected and updated by SettingsBootstrap on the client
 		const id = await ctx.db.insert('settings', {
 			userId,
 			email: authUser?.email || undefined,
@@ -330,7 +377,9 @@ export const getOrCreateSettings = mutation({
 			phone: undefined,
 			timezone: undefined,
 			voiceId: undefined,
-			selectedVoice: undefined,
+			selectedVoice: "cgSgspJ2msm6clMCkdW9", // Default: Jessica (popular 11Labs voice)
+			testModeEnabled: undefined,
+			testModeNumber: undefined,
 			updatedAt,
 		});
 		console.log('[getOrCreateSettings] inserted', id, 'for user', userId);
@@ -340,38 +389,86 @@ export const getOrCreateSettings = mutation({
 });
 
 export const saveSettings = mutation({
-    args: {
-        firstName: v.optional(v.string()),
-        lastName: v.optional(v.string()),
-        address: v.optional(v.string()),
-        email: v.optional(v.string()),
-        birthdate: v.optional(v.string()),
-        phone: v.optional(v.string()),
-        timezone: v.optional(v.string()),
+	args: {
+		firstName: v.optional(v.string()),
+		lastName: v.optional(v.string()),
+		address: v.optional(v.string()),
+		email: v.optional(v.string()),
+		birthdate: v.optional(v.string()),
+		phone: v.optional(v.string()),
+		timezone: v.optional(v.string()),
 		voiceId: v.optional(v.string()),
-        selectedVoice: v.optional(v.string()),
-    },
-    handler: async (ctx, args) => {
+		selectedVoice: v.optional(v.string()),
+		testModeEnabled: v.optional(v.boolean()),
+		testModeNumber: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
 		const userId = await requireUserId(ctx);
-        const updatedAt = new Date().toISOString();
-		// Upsert for this user: always insert new version (audit) or patch latest? We'll patch latest for simplicity.
+		const updatedAt = new Date().toISOString();
+
+		const updates: Record<string, any> = {};
+
+		const assignTrimmed = (key: keyof typeof args) => {
+			const value = args[key];
+			if (typeof value === "undefined") return;
+			if (typeof value === "string") {
+				const trimmed = value.trim();
+				updates[key] = trimmed.length > 0 ? trimmed : undefined;
+			} else {
+				updates[key] = value;
+			}
+		};
+
+		assignTrimmed("firstName");
+		assignTrimmed("lastName");
+		assignTrimmed("address");
+		assignTrimmed("email");
+		assignTrimmed("birthdate");
+		assignTrimmed("timezone");
+		assignTrimmed("voiceId");
+		assignTrimmed("selectedVoice");
+
+		if (typeof args.phone !== "undefined") {
+			const trimmed = (args.phone ?? "").trim();
+			if (trimmed.length > 0 && !E164_REGEX.test(trimmed)) {
+				throw new Error("Phone must be in E.164 format, e.g. +15551234567");
+			}
+			updates.phone = trimmed.length > 0 ? trimmed : undefined;
+		}
+
+		if (typeof args.testModeNumber !== "undefined") {
+			const trimmed = (args.testModeNumber ?? "").trim();
+			if (trimmed.length > 0 && !E164_REGEX.test(trimmed)) {
+				throw new Error("Test mode number must be in E.164 format, e.g. +15551234567");
+			}
+			updates.testModeNumber = trimmed.length > 0 ? trimmed : undefined;
+		}
+
+		if (typeof args.testModeEnabled !== "undefined") {
+			updates.testModeEnabled = args.testModeEnabled;
+		}
+
 		const latest = await ctx.db
 			.query("settings")
 			.withIndex("by_userId_updatedAt", (q) => q.eq("userId", userId))
 			.order("desc")
 			.take(1);
+		updates.updatedAt = updatedAt;
+		const updatesWithAudit = { ...updates, updatedAt };
+
 		if (latest[0]) {
-			console.log('[saveSettings] patching existing settings', latest[0]._id, Object.keys(args));
-			await ctx.db.patch(latest[0]._id, { ...args, updatedAt });
-			await syncBetterAuthProfile(ctx, { ...args });
+			console.log('[saveSettings] patching existing settings', latest[0]._id, Object.keys(updates));
+			await ctx.db.patch(latest[0]._id, updatesWithAudit);
+			await syncBetterAuthProfile(ctx, updatesWithAudit);
 			return { id: latest[0]._id, updatedAt };
 		} else {
-			console.log('[saveSettings] inserting new settings for user', userId, Object.keys(args));
-			const id = await ctx.db.insert("settings", { userId, ...args, updatedAt });
-			await syncBetterAuthProfile(ctx, { ...args });
+			console.log('[saveSettings] inserting new settings for user', userId, Object.keys(updates));
+			const payload = { userId, ...updatesWithAudit };
+			const id = await ctx.db.insert("settings", payload);
+			await syncBetterAuthProfile(ctx, updatesWithAudit);
 			return { id, updatedAt };
 		}
-    },
+	},
 });
 
 // DEBUG HELPERS
@@ -381,10 +478,10 @@ export const debugAllMySettings = query({
 		const userId = await requireUserId(ctx);
 		const rows = await ctx.db
 			.query("settings")
-			.withIndex("by_userId", q => q.eq("userId", userId))
+			.withIndex("by_userId", (q) => q.eq("userId", userId))
 			.collect();
 		return { count: rows.length, rows };
-	}
+	},
 });
 
 export const forceInitSettings = mutation({
@@ -428,6 +525,7 @@ export const ensureSettings = mutation({
 			lastName = parts.slice(1).join(' ') || undefined;
 		}
 		const updatedAt = new Date().toISOString();
+		// Note: Timezone will be auto-detected and updated by SettingsBootstrap on the client
 		const id = await ctx.db.insert('settings', {
 			userId,
 			email: authUser?.email || undefined,
@@ -438,7 +536,9 @@ export const ensureSettings = mutation({
 			phone: undefined,
 			timezone: undefined,
 			voiceId: undefined,
-			selectedVoice: undefined,
+			selectedVoice: "cgSgspJ2msm6clMCkdW9", // Default: Jessica (popular 11Labs voice)
+			testModeEnabled: undefined,
+			testModeNumber: undefined,
 			updatedAt,
 		});
 		console.log('[ensureSettings] created settings id', id, 'for user', userId);

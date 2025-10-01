@@ -90,32 +90,6 @@ export const cloneVoiceWithAudioData = action({
   },
 });
 
-export const listVoices = action({
-  args: {},
-  handler: async (ctx) => {
-    try {
-      const privateKey = process.env.VAPI_PRIVATE_API_KEY || process.env.VAPI_PRIVATE_KEY || "";
-      const orgId = process.env.VAPI_ORG_ID || "";
-      if (!privateKey || !orgId) throw new Error("Missing Vapi credentials");
-
-      const now = Date.now();
-      let jwtToken: string;
-      if (cachedJWT && cachedJWT.expiresAt > now + 5 * 60 * 1000) {
-        jwtToken = cachedJWT.token;
-      } else {
-        jwtToken = generateVapiJWT(orgId, privateKey);
-        cachedJWT = { token: jwtToken, expiresAt: now + 60 * 60 * 1000 };
-      }
-
-      const resp = await fetch("https://api.vapi.ai/11labs/voice", {
-        method: "GET",
-        headers: { Authorization: `Bearer ${jwtToken}`, Accept: "application/json" },
-      });
-      if (!resp.ok) throw new Error(`Failed to fetch voices: ${resp.statusText}`);
-      const voices = await resp.json();
-      return { success: true, voices };
-    } catch (e: any) {
-      return { success: false, error: e.message };
-    }
-  },
-});
+// Note: listVoices and fetch11LabsVoiceLibrary actions have been removed
+// Voice library is now cached in /lib/voice-library.json
+// To refresh the cache, run: npx tsx scripts/fetch-voice-library.ts

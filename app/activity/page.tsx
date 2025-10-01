@@ -7,9 +7,10 @@ import { PhoneCall, Clock, Info, CheckCircle2, Building2, Hash, Menu } from "luc
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { IssuesSidebar } from "@/components/issues-sidebar"
-import { useQuery } from "convex/react"
+import { useQuery, Authenticated, Unauthenticated, AuthLoading } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Logo } from "@/components/logo"
+import { Skeleton } from "@/components/ui/skeleton"
 
 type ActivityItem = {
   id: string
@@ -22,7 +23,47 @@ type ActivityItem = {
   meta?: { opensAt?: string; timezone?: string }
 }
 
-export default function ActivityPage() {
+function ActivitySkeleton() {
+  return (
+    <div className="h-screen overflow-y-auto ios-scroll scroll-container bg-background lg:pl-64">
+      <div className="fixed top-0 left-0 right-0 z-30 flex items-center justify-between safe-area bg-background/95 backdrop-blur-sm px-4 lg:hidden">
+        <Skeleton className="h-12 w-12 rounded-xl" />
+        <Skeleton className="h-8 w-32" />
+        <div className="w-12" />
+      </div>
+      <div className="mx-auto w-full max-w-3xl px-6 pt-20 lg:pt-6 pb-24">
+        <div className="mb-6">
+          <Skeleton className="h-8 w-40 mb-2" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <div className="divide-y rounded-xl border overflow-hidden">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="px-4 py-4">
+              <div className="flex items-start gap-3">
+                <Skeleton className="h-5 w-5 mt-0.5" />
+                <div className="flex-1 min-w-0 space-y-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-4 w-full" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RedirectToSignIn() {
+  const router = useRouter()
+  React.useEffect(() => {
+    router.replace("/auth/sign-in?next=/activity")
+  }, [router])
+  return <ActivitySkeleton />
+}
+
+function ActivityContent() {
   const router = useRouter()
   const convexIssues = useQuery(api.orchestration.listIssuesWithMeta, {}) as any[] | undefined
   const issues = React.useMemo(() => {
@@ -207,4 +248,18 @@ export default function ActivityPage() {
   )
 }
 
-
+export default function ActivityPage() {
+  return (
+    <>
+      <AuthLoading>
+        <ActivitySkeleton />
+      </AuthLoading>
+      <Unauthenticated>
+        <RedirectToSignIn />
+      </Unauthenticated>
+      <Authenticated>
+        <ActivityContent />
+      </Authenticated>
+    </>
+  )
+}

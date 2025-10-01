@@ -99,10 +99,10 @@ export function IssuesSidebar({
                     <IssueIcon issueId={issue.id} size="sm" />
                     
                     {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between mb-1">
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className="flex items-start justify-between gap-2 mb-1">
                         <h3 className={cn(
-                          "font-medium text-sm leading-tight line-clamp-2",
+                          "font-medium text-sm leading-tight line-clamp-2 flex-1 min-w-0",
                           isSelected ? "text-primary" : "text-sidebar-foreground"
                         )}>
                           {issue.title}
@@ -110,7 +110,7 @@ export function IssuesSidebar({
                         
                         {/* Status badge */}
                         <div className={cn(
-                          "px-2 py-0.5 rounded-full text-xs font-medium ml-2 flex-shrink-0",
+                          "px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 whitespace-nowrap",
                           issue.status === "open" && "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
                           issue.status === "in-progress" && "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
                           issue.status === "resolved" && "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
@@ -120,30 +120,30 @@ export function IssuesSidebar({
                       </div>
                       
                       {/* Metadata */}
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        <span>{issue.createdAt.toLocaleDateString()}</span>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap overflow-hidden">
+                        <Clock className="h-3 w-3 flex-shrink-0" />
+                        <span className="whitespace-nowrap">{issue.createdAt.toLocaleDateString()}</span>
                         {(issue as any).messageCount ? (
                           <>
                             <span>•</span>
-                            <span>{(issue as any).messageCount} messages</span>
+                            <span className="whitespace-nowrap">{(issue as any).messageCount} messages</span>
                           </>
                         ) : issue.messages && issue.messages.length > 0 ? (
                           <>
                             <span>•</span>
-                            <span>{issue.messages.length} messages</span>
+                            <span className="whitespace-nowrap">{issue.messages.length} messages</span>
                           </>
                         ) : null}
                       </div>
                       
                       {/* Last message preview */}
                       {(issue as any).lastMessage ? (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1 overflow-hidden text-ellipsis">
                           {(issue as any).lastMessage}
                         </p>
                       ) : issue.messages && issue.messages.length > 0 ? (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                          {issue.messages[issue.messages.length - 1].content}
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1 overflow-hidden text-ellipsis">
+                          {issue.messages[issue.messages.length - 1]?.content || ''}
                         </p>
                       ) : null}
                     </div>

@@ -1,234 +1,134 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { api } from '@/convex/_generated/api'
 import { fetchQuery } from 'convex/nextjs'
 import { getToken } from '@/lib/auth-server'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-
-// System prompt for lightweight, progressive intake
-const SYSTEM_PROMPT = `You are a helpful, lightweight intake agent preparing for a real phone call to resolve the user's problem.
-
-Core behavior:
-- Always respond to the user's last message directly. Never return an empty message.
-- Use KNOWN CONTEXT and SETTINGS as facts unless the user corrects them.
-- Build context progressively. If information is missing or ambiguous, ask at most ONE focused follow-up question.
-- Keep responses brief (<= 3 sentences or a short bullet list). No long-form content, no research.
-- Do NOT ask about fields already present in KNOWN CONTEXT or SETTINGS (e.g., name, phone, email, timezone, address).
-- If the user asks a general question, answer succinctly first; only then ask one clarifying intake question if needed.
-
-Minimal fields to collect over time (when relevant):
-1) Problem summary
-2) Key details (errors, repro steps, environment, IDs)
-3) Desired outcome (what the user wants to happen)
-4) Availability: timezone + preferred call windows (optional if not discussed yet)
-
-Completion signal:
-Only when you have a clear summary, some meaningful details, and the desired outcome, output a final line:
-ISSUE_COMPLETE: { JSON with summary, details, desiredOutcome, and any availability you have }
-
-Otherwise, just reply naturally and keep it moving. Never output empty text.`
-
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-}
+const AGENT_BASE_URL = process.env.AGENT_BASE_URL!
+const AGENT_API_KEY = process.env.AGENT_API_KEY!
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, issueId, knownContext } = await req.json()
+    const body = await req.json()
+    const { messages, issueId, conversationId } = body
 
-    // Guardrails: if the final user input is extremely long, cap it slightly to avoid oversized requests
-    if (Array.isArray(messages) && messages.length > 0) {
-      const last = messages[messages.length - 1]
-      if (last && typeof last.content === 'string' && last.content.length > 2000) {
-        last.content = last.content.slice(0, 2000)
-      }
-    }
-
-    if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json(
-        { error: 'Gemini API key not configured' },
-        { status: 500 }
+    if (!AGENT_BASE_URL || !AGENT_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: 'Agent configuration missing' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
       )
     }
 
-    const model = genAI.getGenerativeModel({
-      // Use a widely available, reliable model
-      model: 'gemini-2.5-flash',
-    })
-
-    // Use conversation history EXCEPT the last user turn (we'll send that as the new message)
-    const msgs = (messages as ChatMessage[])
-    const historyWithoutLast = msgs.length > 0 ? msgs.slice(0, -1) : []
-    const conversationHistory = historyWithoutLast.map((msg: ChatMessage) => ({
-      role: msg.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: msg.content }]
-    }))
-
-    // Fetch latest settings from Convex to pre-fill identity/contacts/timezone so we don't ask for them
+    // Fetch user settings from Convex for context headers
     const token = await getToken()
     let settings: any = null
+    let storedChatId: string | null = null
+    
     if (token) {
       try {
         settings = await fetchQuery(api.orchestration.getSettings, {}, { token })
       } catch (e) {
-        console.warn('Failed to fetch settings from Convex (intake):', e)
+        console.warn('Failed to fetch settings from Convex:', e)
       }
-    } else {
-      console.warn('No auth token available while fetching Convex settings for intake')
-    }
-
-    // Log what we're sending to debug empty responses
-    const systemText = `${SYSTEM_PROMPT}\n\nKNOWN CONTEXT (JSON):\n${knownContext ? JSON.stringify(knownContext) : '{}'}\n\nSETTINGS (JSON):\n${settings ? JSON.stringify(settings) : '{}'}`
-    console.log('Chat intake payload:', {
-      systemTextLength: systemText.length,
-      historyLength: conversationHistory.length,
-      lastUserMessage: messages[messages.length - 1]?.content || 'NO_LAST_MESSAGE',
-      knownContext,
-      settings
-    })
-
-    // Start chat with system prompt
-    const chat = model.startChat({
-      history: [
-        {
-          role: 'user',
-          parts: [{ text: systemText }]
-        },
-        {
-          role: 'model',
-          parts: [{ text: 'Understood. I\'ll respond directly, keep it short, and ask at most one focused question when needed.' }]
-        },
-        ...conversationHistory
-      ],
-      generationConfig: {
-        maxOutputTokens: 512,
-        temperature: 0.3,
-      } as any,
-    })
-
-    // Minimal retry/backoff on 429 rate limit
-  const lastUserContent = (msgs[msgs.length - 1]?.content || '')
-    const sendWithRetry = async () => {
-      try {
-        console.log('Sending to Gemini:', lastUserContent)
-        return await chat.sendMessage(lastUserContent)
-      } catch (err: any) {
-        const msg = String(err?.message || err)
-        console.error('Gemini error:', err)
-        if (msg.includes('429')) {
-          console.log('Hit 429, retrying after 800ms...')
-          await new Promise((r) => setTimeout(r, 800))
-          return await chat.sendMessage(lastUserContent)
+      
+      // Get stored conversationId from issue if it exists
+      if (issueId) {
+        try {
+          const issue = await fetchQuery(api.orchestration.getIssue, { id: issueId }, { token })
+          storedChatId = issue?.chatId || null
+        } catch (e) {
+          console.warn('Failed to fetch issue conversationId:', e)
         }
-        throw err
       }
-    }
-  let result = await sendWithRetry()
-    
-    // Robust response extraction
-    let response = ''
-    let finishedReason: string | undefined
-    let safety: any
-    try {
-      response = result.response.text() || ''
-      finishedReason = (result as any)?.response?.candidates?.[0]?.finishReason
-      safety = (result as any)?.response?.candidates?.[0]?.safetyRatings
-    } catch (e) {
-      console.error('Failed to extract response text:', e)
-    }
-    // If empty, try reconstructing from candidates
-    if (!response || response.trim() === '') {
-      const candidates = (result as any)?.response?.candidates
-      if (candidates && candidates.length > 0) {
-        const texts: string[] = []
-        for (const c of candidates) {
-          finishedReason = finishedReason || c?.finishReason
-          safety = safety || c?.safetyRatings
-          const parts = c?.content?.parts || []
-          for (const p of parts) {
-            if (typeof p?.text === 'string') texts.push(p.text)
-          }
-        }
-        response = texts.join('').trim()
-      }
-    }
-    console.log('Raw Gemini response:', response, 'finishReason:', finishedReason, 'safety:', safety)
-    // If still empty, try a single gentle retry prompting a short reply
-    if (!response || response.trim() === '') {
-      console.warn('Empty model response; retrying once with a brief nudge...')
-      try {
-        await new Promise((r) => setTimeout(r, 300))
-        const retry = await chat.sendMessage(`${lastUserContent}\n\nPlease reply briefly (one or two sentences).`)
-        response = retry.response.text() || ''
-        if (!response || response.trim() === '') {
-          const rcands = (retry as any)?.response?.candidates
-          if (rcands && rcands.length > 0) {
-            const texts: string[] = []
-            for (const c of rcands) {
-              const parts = c?.content?.parts || []
-              for (const p of parts) {
-                if (typeof p?.text === 'string') texts.push(p.text)
-              }
-            }
-            response = texts.join('').trim()
-          }
-        }
-      } catch (retryErr) {
-        console.error('Retry after empty response failed:', retryErr)
-      }
-    }
-    // If still empty, provide a helpful message based on finishReason/safety
-    if (!response || response.trim() === '') {
-      console.error('EMPTY RESPONSE from Gemini')
-      const safetyNote = finishedReason === 'SAFETY'
-        ? ' I may have been blocked by a safety filter. Please rephrase or add a bit more detail.'
-        : ''
-      response = `I had trouble generating a reply just now.${safetyNote} Could you rephrase or provide a little more detail?`
     }
 
-    // Extract grounding metadata (if any)
-    // Chat intake no longer uses grounding tools; keep empty arrays for compatibility
-    const sources: string[] = []
-    const webSearchQueries: string[] = []
-    const dynamicRetrievalScore: number | undefined = undefined
-
-    // Check if issue understanding is complete (robust – allow minor prefaces)
-    const completeMatch = response.match(/ISSUE_COMPLETE\s*:/i)
-    const isComplete = Boolean(completeMatch)
-    let issueDetails: string | undefined = undefined
-    if (isComplete) {
-      const idx = completeMatch!.index ?? 0
-      const after = response.slice(idx).replace(/^[^\{]*:/, '').trim()
-      issueDetails = after
+    // Build headers as per agent requirements
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
     }
-    
-    return NextResponse.json({
-      message: response,
-      isComplete,
-      issueDetails,
+
+    headers['Authorization'] = `Bearer ${AGENT_API_KEY}`
+
+    // Pass settings as context headers (as per agent docs)
+    if (settings) {
+      if (settings.firstName && settings.lastName) {
+        headers['name'] = settings.firstName + ' ' + settings.lastName
+      }
+      if (settings.email) headers['email'] = settings.email
+      if (settings.phone) headers['phone'] = settings.phone
+      if (settings.timezone) headers['timezone'] = settings.timezone
+      if (settings.address) headers['address'] = JSON.stringify(settings.address)
+    }
+
+    // Pass issueId as metadata
+    if (issueId) {
+      headers['issueid'] = issueId
+    }
+
+    // Pass auth token as a header if available
+    if (token) {
+      headers['authtoken'] = token
+    }
+
+    // Use stored conversationId or the one from request
+    const activeConversationId = storedChatId || conversationId
+
+    // Only send the LAST message (the new one), not entire history
+    const lastMessage = messages[messages.length - 1]
+
+    console.log('Proxying to agent:', {
+      url: `${AGENT_BASE_URL}/api/chat`,
       issueId,
-      sources,
-      webSearchQueries,
-      dynamicRetrievalScore,
+      conversationId: activeConversationId,
+      newMessage: lastMessage?.content?.substring(0, 50) + '...',
+      hasSettings: !!settings,
+    })
+
+    // Build request body - only send the new message and conversationId if we have one
+    const requestBody: any = { 
+      messages: [lastMessage]
+    }
+    if (activeConversationId) {
+      requestBody.conversationId = activeConversationId
+    }
+
+    // Forward request to agent
+    const agentResponse = await fetch(`${AGENT_BASE_URL}/api/chat`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+    })
+
+    if (!agentResponse.ok) {
+      const errorText = await agentResponse.text()
+      console.error('Agent error:', errorText)
+      return new Response(
+        JSON.stringify({ error: `Agent error: ${errorText}` }),
+        { status: agentResponse.status, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    console.log('Agent response headers:', {
+      contentType: agentResponse.headers.get('Content-Type'),
+      status: agentResponse.status,
+    })
+
+    // Stream the response back to the client
+    // This passes through all streaming data including tool calls, thinking, etc.
+    return new Response(agentResponse.body, {
+      status: 200,
+      headers: {
+        'Content-Type': agentResponse.headers.get('Content-Type') || 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Content-Type-Options': 'nosniff',
+      },
     })
 
   } catch (error) {
     console.error('Chat API error:', error)
-    
-    // Check if it's a 429 and tell the user
-    const errorMsg = String(error)
-    if (errorMsg.includes('429')) {
-      return NextResponse.json(
-        { error: '429 Rate Limited - Too many requests to Gemini API. Try again in a moment.' },
-        { status: 429 }
-      )
-    }
-    
-    return NextResponse.json(
-      { error: `Failed to process chat message: ${errorMsg}` },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({ error: `Failed to process chat: ${String(error)}` }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     )
   }
 }
