@@ -45,6 +45,7 @@ function OnboardingContent() {
   const router = useRouter();
   const onboardingStatus = useQuery(api.orchestration.checkOnboardingStatus, {});
   const settings = useQuery(api.orchestration.getSettings, {});
+  const ensureSettings = useMutation(api.orchestration.ensureSettings);
   const completeOnboarding = useMutation(api.orchestration.completeOnboarding);
 
   // If already completed, redirect to dashboard
@@ -54,8 +55,27 @@ function OnboardingContent() {
     }
   }, [onboardingStatus, router]);
 
-  if (!onboardingStatus || !settings) {
+  if (!onboardingStatus || settings === undefined) {
     return <OnboardingSkeleton />;
+  }
+
+  if (!settings) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="max-w-md space-y-4 text-center">
+          <h2 className="text-xl font-semibold">Preparing your workspace…</h2>
+          <p className="text-sm text-muted-foreground">
+            Were creating your account settings. This usually takes a second.
+          </p>
+          <button
+            onClick={() => ensureSettings({}).catch(() => {})}
+            className="inline-flex items-center justify-center rounded-md border border-border px-4 py-2 text-sm transition hover:bg-secondary"
+          >
+            Retry setup
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (onboardingStatus.completed) {
