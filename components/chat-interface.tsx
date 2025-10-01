@@ -9,6 +9,7 @@ import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -219,7 +220,7 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
   const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(new Set())
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const pcmBufferRef = useRef<Int16Array[]>([]) // Store PCM chunks
@@ -298,6 +299,18 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
     }
   }, [])
 
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    const textarea = inputRef.current
+    if (!textarea) return
+    
+    // Reset height to auto to get the correct scrollHeight
+    textarea.style.height = 'auto'
+    // Set height based on scrollHeight, with max of 200px (about 8 lines)
+    const newHeight = Math.min(textarea.scrollHeight, 200)
+    textarea.style.height = `${newHeight}px`
+  }, [newMessage])
+
   const toggleTranscript = (messageId: string) => {
     setExpandedTranscripts((prev) => {
       const newSet = new Set(prev)
@@ -320,11 +333,12 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
     await sendChatMessage(messageContent)
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSendMessage()
     }
+    // Allow Shift+Enter for new lines
   }
 
   const StatusIcon = statusConfig[issue.status as keyof typeof statusConfig]?.icon || MessageCircle
@@ -594,31 +608,22 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
         {/* iOS-style Input Area inside viewport to avoid nested scroll */}
         <div className="sticky bottom-0 z-30 safe-area border-t border-border glass-effect bg-background/95 backdrop-blur-sm ios-no-bounce" style={{ paddingBottom: 'var(--kb, 0px)' }}>
           <div className="flex gap-3 max-w-4xl mx-auto p-4 pb-6 lg:pb-4">
-            {/* Camera Button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-12 w-12 p-0 rounded-2xl modern-hover ios-button icon-only flex-shrink-0"
-              disabled={isLoading}
-            >
-              <Camera className="h-5 w-5 text-muted-foreground" />
-            </Button>
-            
-            {/* Input with Send Button */}
+            {/* Textarea with Send Button */}
             <div className="flex-1 relative">
-              <Input
+              <Textarea
                 ref={inputRef}
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyPress}
                 placeholder="Type your message..."
-                className="h-12 text-sm px-4 pr-14 rounded-2xl border-border/50 focus:border-border focus:ring-0 focus:ring-offset-0 focus:outline-none ios-transition focus:scale-[1.01] shadow-sm bg-background/80 backdrop-blur-sm"
+                className="min-h-[48px] max-h-[200px] text-sm px-4 pr-14 py-3 rounded-2xl border-border/50 focus:border-border focus:ring-0 focus:ring-offset-0 focus:outline-none ios-transition focus:scale-[1.01] shadow-sm bg-background/80 backdrop-blur-sm resize-none"
                 disabled={isLoading}
+                rows={1}
               />
               <Button
                 onClick={handleSendMessage}
                 disabled={!newMessage.trim() || isLoading}
-                className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 p-0 rounded-xl modern-hover animate-scale-in shadow-sm ios-button icon-only flex items-center justify-center"
+                className="absolute right-2 bottom-2 h-8 w-8 p-0 rounded-xl modern-hover animate-scale-in shadow-sm ios-button icon-only flex items-center justify-center"
                 size="sm"
               >
                 <Send className="h-4 w-4" />
