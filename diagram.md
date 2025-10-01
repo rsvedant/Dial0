@@ -49,7 +49,7 @@ flowchart TD
     • Structured context for issues]
     I2[Firecrawl web research
     • Pulls external references for agent]
-    I3[OpenAI GPT-4.1 Agents
+    I3[OpenAI GPT-OSS-120b Agents
     • Main orchestrator, Context agent]
     I4[Prompt templating
     • System templates for voice calls]
@@ -58,7 +58,7 @@ flowchart TD
   %% CALL PREP STAGE
   subgraph Call Preparation
     P1[Context builder
-    • Gemini 2.5 converts transcripts → JSON]
+    • GPT-OSS-120b converts transcripts → JSON]
     P2[Voice cloning
     • Convex action hits Vapi 11Labs clone API]
     P3[Test mode controls
