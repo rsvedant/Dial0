@@ -25,6 +25,7 @@ export default defineSchema({
 		selectedVoice: v.optional(v.string()),
 		testModeEnabled: v.optional(v.boolean()),
 		testModeNumber: v.optional(v.string()),
+		onboardingCompleted: v.optional(v.boolean()),
 		updatedAt: v.string(), // ISO timestamp
 	})
 		.index("by_updatedAt", ["updatedAt"]) // existing global index

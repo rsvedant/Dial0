@@ -4,6 +4,9 @@ import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
 import type { Issue, Message } from "@/app/page"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import rehypeRaw from "rehype-raw"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -99,6 +102,62 @@ function InlineAudioPlayer({ src }: { src: string }) {
     </div>
   )
 }
+// Markdown renderer with custom styling
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <div className="prose prose-sm dark:prose-invert max-w-none">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw]}
+        components={{
+        // Custom styling for markdown elements
+        p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+        a: ({ children, href }) => (
+          <a href={href} className="text-primary hover:underline font-medium" target="_blank" rel="noopener noreferrer">
+            {children}
+          </a>
+        ),
+        code: ({ inline, children, ...props }: any) =>
+          inline ? (
+            <code className="px-1.5 py-0.5 rounded bg-muted text-foreground font-mono text-xs" {...props}>
+              {children}
+            </code>
+          ) : (
+            <code className="block p-3 rounded-lg bg-muted text-foreground font-mono text-xs overflow-x-auto" {...props}>
+              {children}
+            </code>
+          ),
+        pre: ({ children }) => <pre className="mb-2 last:mb-0 overflow-x-auto">{children}</pre>,
+        ul: ({ children }) => <ul className="mb-2 last:mb-0 ml-4 list-disc space-y-1">{children}</ul>,
+        ol: ({ children }) => <ol className="mb-2 last:mb-0 ml-4 list-decimal space-y-1">{children}</ol>,
+        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+        h1: ({ children }) => <h1 className="text-lg font-bold mb-2 mt-3 first:mt-0">{children}</h1>,
+        h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-3 first:mt-0">{children}</h2>,
+        h3: ({ children }) => <h3 className="text-sm font-bold mb-2 mt-2 first:mt-0">{children}</h3>,
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-4 border-primary/30 pl-3 py-1 my-2 italic text-muted-foreground">
+            {children}
+          </blockquote>
+        ),
+        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        em: ({ children }) => <em className="italic">{children}</em>,
+        hr: () => <hr className="my-3 border-border" />,
+        table: ({ children }) => (
+          <div className="overflow-x-auto my-2">
+            <table className="min-w-full border-collapse border border-border text-xs">{children}</table>
+          </div>
+        ),
+        thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
+        th: ({ children }) => <th className="border border-border px-2 py-1 text-left font-semibold">{children}</th>,
+        td: ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+    </div>
+  )
+}
+
 import { useChat } from "@/hooks/use-chat"
 import { TimelineIndicator } from "@/components/timeline-indicator"
 import { IssueIcon } from "@/components/issue-icon"
@@ -473,7 +532,9 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
                         )}
                       </div>
                     ) : (
-                      <p className="text-sm leading-relaxed">{message.content}</p>
+                      <div className="text-sm">
+                        <MarkdownContent content={message.content} />
+                      </div>
                     )}
 
                     <div className="flex items-center justify-between mt-2">

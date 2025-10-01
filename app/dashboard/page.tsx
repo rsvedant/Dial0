@@ -47,9 +47,17 @@ function DashboardContent() {
   const convexIssues = useQuery(api.orchestration.listIssuesWithMeta, {}) as any[] | undefined;
   const createIssueMutation = useMutation(api.orchestration.createIssue);
   const updateIssueStatusMutation = useMutation(api.orchestration.updateIssueStatus);
+  const onboardingStatus = useQuery(api.orchestration.checkOnboardingStatus, {});
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
+
+  // Redirect to onboarding if not completed
+  useEffect(() => {
+    if (onboardingStatus && !onboardingStatus.completed) {
+      router.replace("/onboarding");
+    }
+  }, [onboardingStatus, router]);
 
   const knownContext = useMemo(() => ({
     user: {

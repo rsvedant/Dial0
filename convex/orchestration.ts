@@ -401,6 +401,7 @@ export const saveSettings = mutation({
 		selectedVoice: v.optional(v.string()),
 		testModeEnabled: v.optional(v.boolean()),
 		testModeNumber: v.optional(v.string()),
+		onboardingCompleted: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const userId = await requireUserId(ctx);
@@ -448,6 +449,10 @@ export const saveSettings = mutation({
 			updates.testModeEnabled = args.testModeEnabled;
 		}
 
+		if (typeof args.onboardingCompleted !== "undefined") {
+			updates.onboardingCompleted = args.onboardingCompleted;
+		}
+
 		const latest = await ctx.db
 			.query("settings")
 			.withIndex("by_userId_updatedAt", (q) => q.eq("userId", userId))
@@ -466,6 +471,122 @@ export const saveSettings = mutation({
 			const payload = { userId, ...updatesWithAudit };
 			const id = await ctx.db.insert("settings", payload);
 			await syncBetterAuthProfile(ctx, updatesWithAudit);
+			return { id, updatedAt };
+		}
+	},
+});
+
+// Onboarding helpers
+export const checkOnboardingStatus = query({
+	args: {},
+	handler: async (ctx) => {
+		const userId = await requireUserId(ctx);
+		const settings = await ctx.db
+			.query("settings")
+			.withIndex("by_userId_updatedAt", (q) => q.eq("userId", userId))
+			.order("desc")
+			.take(1);
+		
+		if (!settings[0]) {
+			return { 
+				completed: false, 
+				hasSettings: false,
+				requiredFields: ['firstName', 'lastName', 'email', 'phone', 'address', 'birthdate', 'selectedVoice']
+			};
+		}
+		
+		const userSettings = settings[0];
+		
+		// If explicitly marked as completed
+		if (userSettings.onboardingCompleted === true) {
+			return { completed: true, hasSettings: true };
+		}
+		
+		// Check if all required fields are filled
+		const requiredFields = ['firstName', 'lastName', 'email', 'phone', 'address', 'birthdate', 'selectedVoice'];
+		const missingFields: string[] = [];
+		
+		for (const field of requiredFields) {
+			const value = (userSettings as any)[field];
+			if (!value || (typeof value === 'string' && value.trim().length === 0)) {
+				missingFields.push(field);
+			}
+		}
+		
+		return {
+			completed: missingFields.length === 0,
+			hasSettings: true,
+			missingFields: missingFields.length > 0 ? missingFields : undefined
+		};
+	},
+});
+
+export const completeOnboarding = mutation({
+	args: {
+		firstName: v.string(),
+		lastName: v.string(),
+		email: v.string(),
+		phone: v.string(),
+		address: v.string(),
+		birthdate: v.string(),
+		timezone: v.string(),
+		selectedVoice: v.string(),
+		testModeEnabled: v.optional(v.boolean()),
+		testModeNumber: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		const userId = await requireUserId(ctx);
+		
+		// Validate required fields
+		const requiredFields = ['firstName', 'lastName', 'email', 'phone', 'address', 'birthdate', 'selectedVoice'];
+		for (const field of requiredFields) {
+			const value = (args as any)[field];
+			if (!value || (typeof value === 'string' && value.trim().length === 0)) {
+				throw new Error(`Missing required field: ${field}`);
+			}
+		}
+		
+		// Validate phone format
+		if (!E164_REGEX.test(args.phone)) {
+			throw new Error("Phone must be in E.164 format, e.g. +15551234567");
+		}
+		
+		// Validate test mode number if test mode is enabled
+		if (args.testModeEnabled && args.testModeNumber) {
+			if (!E164_REGEX.test(args.testModeNumber)) {
+				throw new Error("Test mode number must be in E.164 format, e.g. +15551234567");
+			}
+		}
+		
+		const updatedAt = new Date().toISOString();
+		const settings = await ctx.db
+			.query("settings")
+			.withIndex("by_userId_updatedAt", (q) => q.eq("userId", userId))
+			.order("desc")
+			.take(1);
+		
+		const updates = {
+			firstName: args.firstName,
+			lastName: args.lastName,
+			email: args.email,
+			phone: args.phone,
+			address: args.address,
+			birthdate: args.birthdate,
+			timezone: args.timezone,
+			selectedVoice: args.selectedVoice,
+			testModeEnabled: args.testModeEnabled ?? false,
+			testModeNumber: args.testModeNumber,
+			onboardingCompleted: true,
+			updatedAt,
+		};
+		
+		if (settings[0]) {
+			await ctx.db.patch(settings[0]._id, updates);
+			await syncBetterAuthProfile(ctx, updates);
+			return { id: settings[0]._id, updatedAt };
+		} else {
+			const id = await ctx.db.insert("settings", { userId, ...updates });
+			await syncBetterAuthProfile(ctx, updates);
 			return { id, updatedAt };
 		}
 	},

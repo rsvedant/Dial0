@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Authenticated, AuthLoading, Unauthenticated, useAction } from "convex/react"
+import { Authenticated, AuthLoading, Unauthenticated, useAction, useQuery } from "convex/react"
 import { useCustomer } from "autumn-js/react"
 import { api } from "@/convex/_generated/api"
-import { Loader2, ExternalLink } from 'lucide-react'
+import { Loader2, ExternalLink, Menu, X } from 'lucide-react'
 import { cn } from "@/lib/utils"
 
 import { Pricing } from "@/components/pricing"
@@ -15,6 +15,8 @@ import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/hooks/use-toast"
+import { IssuesSidebar } from "@/components/issues-sidebar"
+import type { IssueListItem } from "@/types/issue"
 
 const ISSUE_FEATURE_ID = "issues"
 const VOICE_FEATURE_ID = "voice_minutes"
@@ -171,11 +173,27 @@ function trialDaysLeft(product: ReturnType<typeof currentPlan>) {
 
 function BillingContent() {
   const { toast } = useToast()
+  const router = useRouter()
   const [managing, setManaging] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const { customer, isLoading, error, refetch } = useCustomer({
     errorOnNotFound: false,
   })
   const openBillingPortal = useAction(api.actions.autumn.openBillingPortal)
+  const convexIssues = useQuery(api.orchestration.listIssuesWithMeta, {}) as any[] | undefined
+  
+  const issues: IssueListItem[] = useMemo(() => {
+    if (!convexIssues) return []
+    return convexIssues.map((doc) => ({
+      id: doc._id,
+      title: doc.title,
+      status: doc.status,
+      createdAt: new Date(doc.createdAt),
+      messages: [],
+      messageCount: doc.messageCount,
+      lastMessage: doc.lastMessage,
+    }))
+  }, [convexIssues])
 
   const plan = useMemo(() => currentPlan(customer), [customer])
   const issuesFeature = customer?.features?.[ISSUE_FEATURE_ID]
@@ -237,29 +255,27 @@ function BillingContent() {
     }
   }
 
-  if (error) {
-    return (
-      <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-6">
-          <h2 className="text-lg font-semibold text-destructive">Billing is cooling off</h2>
-          <p className="mt-2 text-sm text-destructive/80">
-            We couldn&apos;t load your billing profile. Refresh the page or contact support if the issue persists.
-          </p>
-          <Button
-            className="mt-4 bg-transparent"
-            variant="outline"
-            onClick={() => {
-              refetch()
-            }}
-          >
-            Retry
-          </Button>
-        </div>
+  const errorContent = error ? (
+    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-6">
+        <h2 className="text-lg font-semibold text-destructive">Billing is cooling off</h2>
+        <p className="mt-2 text-sm text-destructive/80">
+          We couldn&apos;t load your billing profile. Refresh the page or contact support if the issue persists.
+        </p>
+        <Button
+          className="mt-4 bg-transparent"
+          variant="outline"
+          onClick={() => {
+            refetch()
+          }}
+        >
+          Retry
+        </Button>
       </div>
-    )
-  }
+    </div>
+  ) : null
 
-  return (
+  const billingMainContent = (
     <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-8">
         <header className="space-y-2">
@@ -395,6 +411,78 @@ function BillingContent() {
             </Card>
           </aside>
         </div>
+      </div>
+    </div>
+  )
+  
+  if (error) {
+    return (
+      <div className="flex h-screen bg-background">
+        <div className={cn(
+          "fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        )}>
+          <IssuesSidebar
+            issues={issues}
+            selectedIssueId={null}
+            onSelectIssue={(id) => {
+              router.push(`/dashboard?issueId=${id}`)
+            }}
+            onGoHome={() => router.push("/dashboard")}
+            onCloseSidebar={() => setSidebarOpen(false)}
+          />
+        </div>
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+        <div className="flex-1 overflow-auto">
+          <div className="sticky top-0 z-30 flex items-center justify-between safe-area bg-background/95 backdrop-blur-sm px-4 lg:hidden border-b border-border h-16">
+            <Button variant="ghost" size="sm" onClick={() => setSidebarOpen(true)} className="h-12 w-12 p-0">
+              <Menu className="h-6 w-6" />
+            </Button>
+            <h1 className="text-lg font-semibold">Billing</h1>
+            <div className="w-12" />
+          </div>
+          {errorContent}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-screen bg-background">
+      <div className={cn(
+        "fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0",
+        sidebarOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <IssuesSidebar
+          issues={issues}
+          selectedIssueId={null}
+          onSelectIssue={(id) => {
+            router.push(`/dashboard?issueId=${id}`)
+          }}
+          onGoHome={() => router.push("/dashboard")}
+          onCloseSidebar={() => setSidebarOpen(false)}
+        />
+      </div>
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      <div className="flex-1 overflow-auto">
+        <div className="sticky top-0 z-30 flex items-center justify-between safe-area bg-background/95 backdrop-blur-sm px-4 lg:hidden border-b border-border h-16">
+          <Button variant="ghost" size="sm" onClick={() => setSidebarOpen(true)} className="h-12 w-12 p-0">
+            <Menu className="h-6 w-6" />
+          </Button>
+          <h1 className="text-lg font-semibold">Billing</h1>
+          <div className="w-12" />
+        </div>
+        {billingMainContent}
       </div>
     </div>
   )

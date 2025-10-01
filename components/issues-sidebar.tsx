@@ -48,7 +48,7 @@ export function IssuesSidebar({
   return (
     <div className={`h-full ios-sidebar flex flex-col ios-no-bounce overflow-hidden ${disableAnimation ? '' : 'animate-slide-in-left'}`}>
       {/* iOS-style Header */}
-      <div className="safe-top bg-sidebar/95 backdrop-blur-xl border-b border-sidebar-border/50">
+      <div className="safe-top bg-background/95 backdrop-blur-xl border-b border-border/50">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between mb-3">
             <div className="flex-1 flex items-center justify-center">
@@ -62,17 +62,17 @@ export function IssuesSidebar({
           {/* iOS-style Home Button */}
           <button
             onClick={onGoHome}
-            className="w-full flex items-center gap-3 px-4 py-3 bg-sidebar-accent/20 hover:bg-sidebar-accent/30 rounded-xl ios-transition ios-button min-h-[44px]"
+            className="w-full flex items-center gap-3 px-4 py-3 bg-muted/40 hover:bg-muted/60 rounded-xl ios-transition ios-button min-h-[44px]"
           >
-            <Home className="h-5 w-5 text-sidebar-foreground" />
-            <span className="text-sm font-medium text-sidebar-foreground">Home</span>
+            <Home className="h-5 w-5 text-foreground" />
+            <span className="text-sm font-medium text-foreground">Home</span>
           </button>
         </div>
       </div>
 
       {/* iOS-style Issues List */}
-  <ScrollArea className="flex-1 overflow-auto">
-        <div className="px-4 py-2">
+  <ScrollArea className="flex-1 overflow-auto bg-background">
+        <div className="px-4 py-2 bg-background">
           <div className="space-y-1">
             {issues.map((issue, index) => {
               const statusKey: IssueStatus = issue.status as IssueStatus
@@ -103,7 +103,7 @@ export function IssuesSidebar({
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <h3 className={cn(
                           "font-medium text-sm leading-tight line-clamp-2 flex-1 min-w-0",
-                          isSelected ? "text-primary" : "text-sidebar-foreground"
+                          isSelected ? "text-primary" : "text-foreground"
                         )}>
                           {issue.title}
                         </h3>
@@ -156,47 +156,47 @@ export function IssuesSidebar({
       </ScrollArea>
 
       {/* iOS-style Bottom Section */}
-      <div className="mt-auto safe-bottom bg-sidebar/95 backdrop-blur-xl border-t border-sidebar-border/50">
+      <div className="mt-auto safe-bottom bg-background/95 backdrop-blur-xl border-t border-border/50">
         <div className="px-4 py-3">
           <button
             onClick={() => {
               router.push("/billing")
               onCloseSidebar()
             }}
-            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-sidebar-accent/10 rounded-xl ios-transition ios-button min-h-[44px] mb-2"
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/40 rounded-xl ios-transition ios-button min-h-[44px] mb-2"
           >
-            <CreditCard className="h-5 w-5 text-sidebar-foreground" />
-            <span className="text-sm font-medium text-sidebar-foreground">Billing &amp; Usage</span>
+            <CreditCard className="h-5 w-5 text-foreground" />
+            <span className="text-sm font-medium text-foreground">Billing &amp; Usage</span>
           </button>
           <button
             onClick={() => {
               router.push("/activity")
               onCloseSidebar()
             }}
-            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-sidebar-accent/10 rounded-xl ios-transition ios-button min-h-[44px] mb-2"
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/40 rounded-xl ios-transition ios-button min-h-[44px] mb-2"
           >
-            <Inbox className="h-5 w-5 text-sidebar-foreground" />
-            <span className="text-sm font-medium text-sidebar-foreground">Activity</span>
+            <Inbox className="h-5 w-5 text-foreground" />
+            <span className="text-sm font-medium text-foreground">Activity</span>
           </button>
           <button
             onClick={() => {
               router.push("/account/settings")
               onCloseSidebar()
             }}
-            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-sidebar-accent/10 rounded-xl ios-transition ios-button min-h-[44px] mb-2"
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/40 rounded-xl ios-transition ios-button min-h-[44px] mb-2"
           >
-            <Settings className="h-5 w-5 text-sidebar-foreground" />
-            <span className="text-sm font-medium text-sidebar-foreground">Settings</span>
+            <Settings className="h-5 w-5 text-foreground" />
+            <span className="text-sm font-medium text-foreground">Settings</span>
           </button>
           <button
             onClick={() => {
               router.push("/account/security")
               onCloseSidebar()
             }}
-            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-sidebar-accent/10 rounded-xl ios-transition ios-button min-h-[44px]"
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/40 rounded-xl ios-transition ios-button min-h-[44px]"
           >
-            <Shield className="h-5 w-5 text-sidebar-foreground" />
-            <span className="text-sm font-medium text-sidebar-foreground">Security</span>
+            <Shield className="h-5 w-5 text-foreground" />
+            <span className="text-sm font-medium text-foreground">Security</span>
           </button>
         </div>
       </div>
