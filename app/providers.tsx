@@ -20,6 +20,9 @@ export function Providers({ children }: { children: ReactNode }) {
                 router.refresh()
             }}
             Link={Link as any}
+            social={{
+                providers: ["github"]
+            }}
             passkey
             twoFactor={["otp", "totp"]} // TODO: add otp function
             emailVerification

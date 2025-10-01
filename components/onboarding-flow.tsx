@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import { VoiceSelector } from "@/components/voice-selector";
 import { useRouter } from "next/navigation";
 
+const INPUT_FOCUS_CLASS = "placeholder:text-neutral-500 focus-visible:ring-transparent focus-visible:border-foreground/40 focus:outline-none";
+
 interface OnboardingFlowProps {
   initialData?: {
     firstName?: string;
@@ -227,7 +229,7 @@ export function OnboardingFlow({ initialData, onComplete }: OnboardingFlowProps)
                 Let's gather some information so your agent can represent you accurately.
               </p>
               <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 max-w-md mx-auto">
-                <p className="text-sm text-foreground font-medium mb-2">🤖 How it works:</p>
+                <p className="text-sm text-foreground font-medium mb-2">How it works:</p>
                 <ul className="text-xs text-muted-foreground space-y-1 text-left">
                   <li>• Your AI agent will use your information to identify you</li>
                   <li>• It can share your details to verify your identity</li>
@@ -256,7 +258,7 @@ export function OnboardingFlow({ initialData, onComplete }: OnboardingFlowProps)
                 autoComplete="given-name"
                 value={formData.firstName}
                 onChange={(e) => updateField("firstName", e.target.value)}
-                className="text-lg h-12"
+                className={cn("text-lg h-12", INPUT_FOCUS_CLASS)}
                 autoFocus
               />
             </div>
@@ -268,7 +270,7 @@ export function OnboardingFlow({ initialData, onComplete }: OnboardingFlowProps)
                 autoComplete="family-name"
                 value={formData.lastName}
                 onChange={(e) => updateField("lastName", e.target.value)}
-                className="text-lg h-12"
+                className={cn("text-lg h-12", INPUT_FOCUS_CLASS)}
               />
             </div>
             {formData.firstName && (
@@ -301,7 +303,7 @@ export function OnboardingFlow({ initialData, onComplete }: OnboardingFlowProps)
                 autoComplete="email"
                 value={formData.email}
                 onChange={(e) => updateField("email", e.target.value)}
-                className="text-lg h-12"
+                className={cn("text-lg h-12", INPUT_FOCUS_CLASS)}
                 autoFocus
               />
               <p className="text-xs text-muted-foreground">
@@ -317,7 +319,7 @@ export function OnboardingFlow({ initialData, onComplete }: OnboardingFlowProps)
                 autoComplete="tel"
                 value={formData.phone}
                 onChange={(e) => updateField("phone", e.target.value)}
-                className={cn("text-lg h-12", phoneError && "border-red-500 focus-visible:ring-red-500")}
+                className={cn("text-lg h-12", INPUT_FOCUS_CLASS, phoneError && "border-red-500 focus-visible:ring-red-500")}
               />
               {phoneError ? (
                 <p className="text-xs text-red-500 font-medium">
@@ -352,7 +354,7 @@ export function OnboardingFlow({ initialData, onComplete }: OnboardingFlowProps)
                 autoComplete="street-address"
                 value={formData.address}
                 onChange={(e) => updateField("address", e.target.value)}
-                className="text-lg h-12"
+                className={cn("text-lg h-12", INPUT_FOCUS_CLASS)}
                 autoFocus
               />
               <p className="text-xs text-muted-foreground">
@@ -367,7 +369,7 @@ export function OnboardingFlow({ initialData, onComplete }: OnboardingFlowProps)
                 autoComplete="bday"
                 value={formData.birthdate}
                 onChange={(e) => updateField("birthdate", e.target.value)}
-                className="text-lg h-12"
+                className={cn("text-lg h-12", INPUT_FOCUS_CLASS)}
               />
               <p className="text-xs text-muted-foreground">
                 The agent can provide this when companies require DOB for verification
@@ -379,10 +381,11 @@ export function OnboardingFlow({ initialData, onComplete }: OnboardingFlowProps)
                 id="timezone"
                 value={browserTimezone}
                 readOnly
-                className="text-lg h-12 bg-muted"
+                disabled
+                className="text-lg h-12 bg-muted/50 text-muted-foreground cursor-not-allowed"
               />
               <p className="text-xs text-muted-foreground">
-                Helps the agent schedule callbacks at convenient times for you
+                Automatically detected from your browser
               </p>
             </div>
           </div>
@@ -443,7 +446,7 @@ export function OnboardingFlow({ initialData, onComplete }: OnboardingFlowProps)
                     placeholder="+15551234567"
                     value={formData.testModeNumber}
                     onChange={(e) => updateField("testModeNumber", e.target.value)}
-                    className={cn("h-12", testPhoneError && "border-red-500 focus-visible:ring-red-500")}
+                    className={cn("h-12", INPUT_FOCUS_CLASS, testPhoneError && "border-red-500 focus-visible:ring-red-500")}
                   />
                   {testPhoneError ? (
                     <p className="text-xs text-red-500 font-medium">

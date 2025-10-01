@@ -46,7 +46,7 @@ export default function LandingPage() {
                 A resolution engine that researches, strategizes, escalates and pursues multi‑channel follow‑ups—turning ambiguous service failures into fast, documented outcomes.
               </p>
               <div className="mt-8 flex flex-col items-start gap-4 sm:flex-row">
-                <Link href="/dashboard" className="glow-ring inline-flex items-center justify-center rounded-lg bg-foreground px-7 py-3 text-sm font-medium text-background shadow transition hover:opacity-90">Request Access</Link>
+                <Link href="/dashboard" className="glow-ring inline-flex items-center justify-center rounded-lg bg-foreground px-7 py-3 text-sm font-medium text-background shadow transition hover:opacity-90">Get Access</Link>
                 <a href="#about" className="inline-flex items-center justify-center rounded-lg border border-border/70 bg-background/70 px-7 py-3 text-sm font-medium text-foreground/80 backdrop-blur transition hover:bg-secondary/60">How it works →</a>
               </div>
               <div className="mt-14 grid max-w-lg gap-4 sm:grid-cols-3">
@@ -206,64 +206,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Contact */}
-  <section id="contact" className="border-t border-border/60 bg-muted/20">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-16 sm:py-24">
-          <div className="grid gap-8 rounded-2xl border border-border bg-card p-6 sm:p-10 md:grid-cols-2">
-            <div>
-              <p className="inline-flex items-center rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground">Get Started</p>
-              <h2 className="mt-4 text-3xl font-semibold tracking-tight">Request Access</h2>
-              <form className="mt-6 space-y-4">
-                <fieldset className="rounded-lg border border-border p-2">
-                  <legend className="px-1 text-xs text-muted-foreground">Intent</legend>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-border px-3 py-2 text-sm has-[:checked]:border-foreground">
-                      <input type="radio" name="intent" defaultChecked className="sr-only" />
-                      <span>Try DialZero</span>
-                    </label>
-                    <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-border px-3 py-2 text-sm has-[:checked]:border-foreground">
-                      <input type="radio" name="intent" className="sr-only" />
-                      <span>Learn More</span>
-                    </label>
-                  </div>
-                </fieldset>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="text-sm">
-                    <span className="mb-1 block text-xs text-muted-foreground">Name</span>
-                    <input className="w-full rounded-md border border-border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/50" placeholder="Your name" />
-                  </label>
-                  <label className="text-sm">
-                    <span className="mb-1 block text-xs text-muted-foreground">Email*</span>
-                    <input type="email" required className="w-full rounded-md border border-border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/50" placeholder="your.email@example.com" />
-                  </label>
-                  <label className="col-span-full text-sm">
-                    <span className="mb-1 block text-xs text-muted-foreground">What's your biggest customer service frustration?*</span>
-                    <textarea required rows={4} className="w-full rounded-md border border-border bg-background px-3 py-2 outline-none focus:ring-2 focus:ring-ring/50" placeholder="Tell us about a recent experience where customer service let you down..." />
-                  </label>
-                </div>
-                <button className="w-full rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90">Submit</button>
-              </form>
-            </div>
-            <div className="">
-              <div className="space-y-3">
-                <div className="rounded-xl border border-border bg-background p-4 text-sm">
-                  <div className="font-medium text-foreground">Intake</div>
-                  <p className="mt-1 text-muted-foreground">Outage across multiple circuits with missed restoration commitments; prior ticket references attached.</p>
-                </div>
-                <div className="rounded-xl border border-border bg-background p-4 text-sm">
-                  <div className="font-medium text-foreground">Strategy</div>
-                  <p className="mt-1 text-muted-foreground">Compiled provider SLA excerpts, historical latency data, and escalation path to tier‑2 network engineering.</p>
-                </div>
-                <div className="rounded-xl border border-border bg-background p-4 text-sm">
-                  <div className="font-medium text-foreground">Outcome</div>
-                  <p className="mt-1 text-muted-foreground">Service restored • Billing credit queued • Automated verification follow‑up scheduled in 48h.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Footer */}
   <footer className="border-t border-border/60">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12">
@@ -277,16 +219,13 @@ export default function LandingPage() {
                 <a href="#about" className="hover:text-foreground">How It Works</a>
                 <a href="#services" className="hover:text-foreground">Use Cases</a>
                 <a href="#testimonials" className="hover:text-foreground">Success Stories</a>
-                <a href="#contact" className="hover:text-foreground">Contact</a>
               </nav>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <div className="text-xs text-muted-foreground">Contact us:</div>
                 <div className="mt-2 text-sm">
-                  <p>Email: hello@dialzero.ai</p>
-                  <p>Phone: 1-800-DIAL-ZERO</p>
-                  <p>123 Innovation Drive, San Francisco, CA 94105</p>
+                  <p>Email: contact@dial0.dev</p>
                 </div>
               </div>
               <form className="flex items-center gap-2">
