@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "bunx convex deploy --cmd 'bun run build'",
+    "build": "next build",
     "dev": "concurrently 'next dev --turbopack' 'convex dev'",
     "lint": "next lint",
     "start": "next start"
