@@ -37,6 +37,13 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
   const [streamEvents, setStreamEvents] = useState<any[]>([]) // All stream events for display
   const abortControllerRef = useRef<AbortController | null>(null)
 
+  useEffect(() => {
+    setMessages([])
+    setIsIssueComplete(false)
+    setStreamingMessage(null)
+    setStreamEvents([])
+  }, [issueId])
+
   // Project Convex rows to ChatMessage shape and merge with streaming message
   useEffect(() => {
     if (!convexMessages) return
@@ -89,16 +96,20 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
     // Elevate a single collapsible "call bubble" from call events, if any exist
     let withCallBubble = mapped
     if (callEvents && callEvents.length > 0) {
+      const eventsWithCallId = callEvents.filter((ev) => ev.callId)
+      const latestCallId = eventsWithCallId.length > 0 ? eventsWithCallId[eventsWithCallId.length - 1].callId : null
+      const relevantEvents = latestCallId ? callEvents.filter((ev) => ev.callId === latestCallId) : callEvents
+
       // Extract monitor URLs if present
-      const monitorEv = callEvents.find(ev => ev.type === 'monitor')
+      const monitorEv = relevantEvents.find(ev => ev.type === 'monitor')
       let monitor: { listenUrl?: string; controlUrl?: string } | undefined
       try { monitor = monitorEv?.content ? JSON.parse(monitorEv.content) : undefined } catch {}
       
       // Determine if call ended and extract recordingUrl
-      const ended = callEvents.some(ev => (ev.type === 'lifecycle' && ev.status === 'ended') || (ev.type === 'status' && /ended/i.test(ev.status || '')))
+      const ended = relevantEvents.some(ev => (ev.type === 'lifecycle' && ev.status === 'ended') || (ev.type === 'status' && /ended/i.test(ev.status || '')))
       let recordingUrl: string | undefined
       let recordingMeta: any
-      const recEv = callEvents.find(ev => ev.type === 'recording')
+      const recEv = relevantEvents.find(ev => ev.type === 'recording')
       if (recEv?.content) {
         try {
           const obj = JSON.parse(recEv.content)
@@ -111,7 +122,7 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
       let pendingUser: string | null = null
       
       // Collapse events into paired turns
-      for (const ev of callEvents) {
+      for (const ev of relevantEvents) {
         if (ev.type === 'transcript' && ev.content) {
           if ((ev.role || '').toLowerCase() === 'user') {
             if (pendingUser) transcriptPairs.push({ user: pendingUser, system: '' })
@@ -128,7 +139,7 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
       }
       if (pendingUser) transcriptPairs.push({ user: pendingUser, system: '' })
 
-      const latestEventTime = new Date(callEvents[callEvents.length - 1].createdAt)
+      const latestEventTime = new Date(relevantEvents[relevantEvents.length - 1].createdAt)
       const bubble: ChatMessage = {
         id: 'call-bubble-' + issueId,
         content: 'Live call transcript',

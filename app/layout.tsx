@@ -5,10 +5,10 @@ import './globals.css'
 import { Suspense } from 'react'
 import { ConvexClientProvider } from './ConvexClientProvider'
 import { AutumnClientProvider } from './AutumnClientProvider'
-import { UserButton } from '@daveyplate/better-auth-ui'
 import { Toaster } from '@/components/ui/toaster'
 import { Providers } from './providers'
 import { ConditionalMobileTabbar } from '@/components/conditional-mobile-tabbar'
+import LayoutUserButton from '@/components/layout-user-button'
 
 export const metadata: Metadata = {
   title: 'Dial0',
@@ -57,9 +57,7 @@ export default function RootLayout({
         <Providers>
           <ConvexClientProvider>
             {/* Top-right auth/user button (Better Auth UI) */}
-            <div className="fixed right-2 top-2 z-50 flex items-center gap-2">
-              <UserButton className="h-8 w-8" />
-            </div>
+            <LayoutUserButton />
             <AutumnClientProvider>
               {children}
             </AutumnClientProvider>

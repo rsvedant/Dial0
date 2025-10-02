@@ -190,7 +190,7 @@ export default function CreateVoicePage() {
       const finalName = (voiceName?.trim() || suggestedVoiceName || "My Voice").slice(0, 50)
       const res: any = await cloneVoice?.({ audioBase64: recordedB64, voiceName: finalName, mimeType: recordedMime })
       if (!res?.success) throw new Error(res?.error || 'Failed to clone voice')
-      await saveSettings({ voiceId: res.voiceId })
+      await saveSettings({ voiceId: res.voiceId, selectedVoice: res.voiceId })
       toast({ title: "Voice Created", description: `Your custom voice "${res.voiceName || voiceName}" has been created and set.` })
       router.push("/account/settings")
     } catch (err: any) {

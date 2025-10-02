@@ -28,12 +28,14 @@ import {
   Sparkles,
   Menu,
   Camera,
-  Pause,
   Play,
+  Pause,
   Radio,
+  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Slider } from "@/components/ui/slider"
+import { useCallAudio } from "@/hooks/use-call-audio"
 // Compact inline audio player for recorded calls
 function InlineAudioPlayer({ src }: { src: string }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -221,11 +223,21 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const audioCtxRef = useRef<AudioContext | null>(null)
-  const wsRef = useRef<WebSocket | null>(null)
-  const pcmBufferRef = useRef<Int16Array[]>([]) // Store PCM chunks
-  const [isListeningLive, setIsListeningLive] = useState(false)
   const [recordingUrlByMsg, setRecordingUrlByMsg] = useState<Record<string, string | undefined>>({})
+  const [activeListenUrl, setActiveListenUrl] = useState<string | undefined>(undefined)
+  const [shouldStartPlayback, setShouldStartPlayback] = useState(false)
+  const {
+    isPlaying: isCallPlaying,
+    isConnecting: isCallConnecting,
+    error: callAudioError,
+    togglePlay: toggleCallAudio,
+    canPlay: canPlayCallAudio,
+  } = useCallAudio(activeListenUrl)
+
+  useEffect(() => {
+    setActiveListenUrl(undefined)
+    setShouldStartPlayback(false)
+  }, [issue.id])
 
   // Use the intelligent chat hook
   const { messages: chatMessages, isLoading, isIssueComplete, sendMessage: sendChatMessage } = useChat({
@@ -344,87 +356,30 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
   const StatusIcon = statusConfig[issue.status as keyof typeof statusConfig]?.icon || MessageCircle
 
   // Simple PCM player following Vapi docs approach
-  const ensureAudioContext = () => {
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+  const stopCallAudio = () => {
+    setShouldStartPlayback(false)
+    if (isCallPlaying) {
+      toggleCallAudio()
     }
-    return audioCtxRef.current
+    setActiveListenUrl(undefined)
   }
 
-  const playPcmChunk = (pcmData: Int16Array) => {
-    const ctx = ensureAudioContext()
-    if (ctx.state === 'suspended') {
-      void ctx.resume().catch(() => {})
+  const startCallAudio = (listenUrl: string) => {
+    if (activeListenUrl !== listenUrl) {
+      if (isCallPlaying) {
+        toggleCallAudio()
+      }
+      setActiveListenUrl(listenUrl)
     }
-    
-    // Vapi sends raw PCM at 16kHz mono (standard for telephony)
-    const sampleRate = 16000
-    const audioBuffer = ctx.createBuffer(1, pcmData.length, sampleRate)
-    const channel = audioBuffer.getChannelData(0)
-    
-    // Convert Int16 to Float32 [-1, 1]
-    for (let i = 0; i < pcmData.length; i++) {
-      channel[i] = pcmData[i] / 32768
-    }
-    
-    const source = ctx.createBufferSource()
-    source.buffer = audioBuffer
-    source.connect(ctx.destination)
-    source.start()
+    setShouldStartPlayback(true)
   }
 
-  const startListening = (listenUrl: string) => {
-    if (wsRef.current) stopListening()
-    
-    pcmBufferRef.current = [] // Reset buffer
-    
-    try {
-      const ws = new WebSocket(listenUrl)
-      ws.binaryType = 'arraybuffer'
-      
-      ws.onopen = () => {
-        console.log('📞 Live audio stream connected')
-        setIsListeningLive(true)
-      }
-      
-      ws.onmessage = (evt) => {
-        if (evt.data instanceof ArrayBuffer) {
-          // Raw PCM data from Vapi
-          const pcmChunk = new Int16Array(evt.data)
-          pcmBufferRef.current.push(pcmChunk) // Store for potential saving
-          playPcmChunk(pcmChunk) // Play immediately
-        }
-      }
-      
-      ws.onclose = () => {
-        console.log('📞 Live audio stream closed')
-        setIsListeningLive(false)
-      }
-      
-      ws.onerror = (err) => {
-        console.error('📞 Live audio stream error:', err)
-        setIsListeningLive(false)
-      }
-      
-      wsRef.current = ws
-    } catch (e) {
-      console.error('Failed to open live audio WebSocket:', e)
-      setIsListeningLive(false)
-    }
-  }
-  const stopListening = () => {
-    try { wsRef.current?.close() } catch {}
-    wsRef.current = null
-    setIsListeningLive(false)
-  }
-
-  // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      try { wsRef.current?.close() } catch {}
-      try { audioCtxRef.current?.close() } catch {}
+    if (shouldStartPlayback && activeListenUrl && !isCallPlaying && !isCallConnecting) {
+      toggleCallAudio()
+      setShouldStartPlayback(false)
     }
-  }, [])
+  }, [shouldStartPlayback, activeListenUrl, isCallPlaying, isCallConnecting, toggleCallAudio])
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden bg-background ios-no-bounce">
@@ -490,15 +445,28 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
                           <div className="flex items-center gap-1">
                             {/* Listen Live control */}
                             {listenUrl && !isEnded && (
-                              isListeningLive ? (
-                                <Button variant="secondary" size="sm" className="h-7 px-2" onClick={stopListening}>
-                                  <Pause className="h-3 w-3 mr-1" /> Stop
-                                </Button>
+                              activeListenUrl === listenUrl ? (
+                                isCallConnecting ? (
+                                  <Button variant="secondary" size="sm" className="h-7 px-2" disabled>
+                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Connecting
+                                  </Button>
+                                ) : isCallPlaying ? (
+                                  <Button variant="secondary" size="sm" className="h-7 px-2" onClick={stopCallAudio}>
+                                    <Pause className="h-3 w-3 mr-1" /> Stop
+                                  </Button>
+                                ) : (
+                                  <Button variant="secondary" size="sm" className="h-7 px-2" onClick={() => startCallAudio(listenUrl)} disabled={!canPlayCallAudio}>
+                                    <Radio className="h-3 w-3 mr-1" /> Listen live
+                                  </Button>
+                                )
                               ) : (
-                                <Button variant="secondary" size="sm" className="h-7 px-2" onClick={() => startListening(listenUrl)}>
+                                <Button variant="secondary" size="sm" className="h-7 px-2" onClick={() => startCallAudio(listenUrl)}>
                                   <Radio className="h-3 w-3 mr-1" /> Listen live
                                 </Button>
                               )
+                            )}
+                            {callAudioError && activeListenUrl === listenUrl && (
+                              <span className="text-xs text-red-500 ml-2">{callAudioError}</span>
                             )}
                             {/* Live badge while call is ongoing */}
                             {!isEnded && (

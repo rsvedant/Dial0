@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight, ChevronLeft, Check, User, Phone, MapPin, Calendar, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VoiceSelector } from "@/components/voice-selector";
+import { InlineVoiceCreator } from "@/components/inline-voice-creator";
 import { useRouter } from "next/navigation";
 
 const INPUT_FOCUS_CLASS = "placeholder:text-neutral-500 focus-visible:ring-transparent focus-visible:border-foreground/40 focus:outline-none";
@@ -87,6 +88,15 @@ export function OnboardingFlow({ initialData, onComplete }: OnboardingFlowProps)
     testModeEnabled: initialData?.testModeEnabled ?? true,
     testModeNumber: initialData?.testModeNumber ?? "",
   });
+
+  const [userVoiceId, setUserVoiceId] = React.useState<string | undefined>(initialData?.voiceId);
+  const [userVoiceName, setUserVoiceName] = React.useState<string | undefined>(
+    initialData?.voiceId
+      ? initialData?.firstName
+        ? `${initialData.firstName}'s Voice`
+        : "Your Voice"
+      : undefined,
+  );
 
   const [phoneError, setPhoneError] = React.useState<string | null>(null);
   const [testPhoneError, setTestPhoneError] = React.useState<string | null>(null);
@@ -407,8 +417,18 @@ export function OnboardingFlow({ initialData, onComplete }: OnboardingFlowProps)
             <VoiceSelector
               value={formData.selectedVoice}
               onChange={(voice) => updateField("selectedVoice", voice)}
-              userVoiceId={initialData?.voiceId}
-              userVoiceName={formData.firstName ? `${formData.firstName}'s Voice` : "Your Voice"}
+              userVoiceId={userVoiceId}
+              userVoiceName={userVoiceName ?? (formData.firstName ? `${formData.firstName}'s Voice` : "Your Voice")}
+            />
+
+            <InlineVoiceCreator
+              userName={[formData.firstName, formData.lastName].filter(Boolean).join(" ")}
+              onCreated={({ voiceId, voiceName }) => {
+                updateField("selectedVoice", voiceId);
+                setUserVoiceId(voiceId);
+                setUserVoiceName(voiceName ?? (formData.firstName ? `${formData.firstName}'s Voice` : "Your Voice"));
+              }}
+              className="mt-6"
             />
             
             {/* Test Mode Section */}
