@@ -296,8 +296,8 @@ export async function POST(req: NextRequest) {
         ],
         // LLM config with dynamic system message
         model: {
-          provider: 'openai',
-          model: 'gpt-4o',
+          provider: 'groq',
+          model: 'openai/gpt-oss-120b',
           maxTokens: 1000,
           temperature: 0.7,
           messages: [

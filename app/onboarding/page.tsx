@@ -4,8 +4,9 @@ import { OnboardingFlow } from "@/components/onboarding-flow";
 import { useQuery, useMutation, Authenticated, Unauthenticated, AuthLoading } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2 } from "lucide-react";
 
 function OnboardingSkeleton() {
   return (
@@ -47,6 +48,74 @@ function OnboardingContent() {
   const settings = useQuery(api.orchestration.getSettings, {});
   const ensureSettings = useMutation(api.orchestration.ensureSettings);
   const completeOnboarding = useMutation(api.orchestration.completeOnboarding);
+  const ensureRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ensureRetryDelayRef = useRef(1000);
+  const ensureInFlightRef = useRef(false);
+
+  useEffect(() => {
+    const DEFAULT_RETRY_DELAY_MS = 1000;
+    const MAX_RETRY_DELAY_MS = 10000;
+
+    if (settings === null) {
+      let cancelled = false;
+
+      const cleanupTimer = () => {
+        if (ensureRetryTimeoutRef.current) {
+          clearTimeout(ensureRetryTimeoutRef.current);
+          ensureRetryTimeoutRef.current = null;
+        }
+      };
+
+      const scheduleRetry = () => {
+        cleanupTimer();
+        const delay = ensureRetryDelayRef.current;
+        ensureRetryTimeoutRef.current = setTimeout(() => {
+          ensureRetryTimeoutRef.current = null;
+          if (!cancelled) {
+            ensureRetryDelayRef.current = Math.min(
+              ensureRetryDelayRef.current * 2,
+              MAX_RETRY_DELAY_MS,
+            );
+            attemptEnsure();
+          }
+        }, delay);
+      };
+
+      const attemptEnsure = async () => {
+        if (cancelled || ensureInFlightRef.current) {
+          return;
+        }
+
+        ensureInFlightRef.current = true;
+
+        try {
+          await ensureSettings({});
+          ensureRetryDelayRef.current = DEFAULT_RETRY_DELAY_MS;
+        } catch (error) {
+          if (!cancelled) {
+            scheduleRetry();
+          }
+        } finally {
+          ensureInFlightRef.current = false;
+        }
+      };
+
+      attemptEnsure();
+
+      return () => {
+        cancelled = true;
+        cleanupTimer();
+        ensureInFlightRef.current = false;
+      };
+    }
+
+    ensureRetryDelayRef.current = DEFAULT_RETRY_DELAY_MS;
+    if (ensureRetryTimeoutRef.current) {
+      clearTimeout(ensureRetryTimeoutRef.current);
+      ensureRetryTimeoutRef.current = null;
+    }
+    ensureInFlightRef.current = false;
+  }, [settings, ensureSettings]);
 
   // If already completed, redirect to dashboard
   useEffect(() => {
@@ -67,12 +136,12 @@ function OnboardingContent() {
           <p className="text-sm text-muted-foreground">
             Were creating your account settings. This usually takes a second.
           </p>
-          <button
-            onClick={() => ensureSettings({}).catch(() => {})}
-            className="inline-flex items-center justify-center rounded-md border border-border px-4 py-2 text-sm transition hover:bg-secondary"
-          >
-            Retry setup
-          </button>
+          <div className="flex justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Well keep trying automatically. This rarely takes more than a few seconds.
+          </p>
         </div>
       </div>
     );
