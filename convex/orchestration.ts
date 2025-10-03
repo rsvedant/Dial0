@@ -201,6 +201,266 @@ export const listIssuesWithMeta = query({
 	},
 });
 
+type ActivityFeedItem = {
+	id: string;
+	createdAt: string;
+	source: "issue" | "chat" | "call" | "context";
+	type: string;
+	issueId?: string;
+	issueTitle?: string;
+	callId?: string;
+	summary: string;
+	details?: string;
+	metadata?: Record<string, any>;
+};
+
+type ActivityCursor = {
+	id: string;
+	createdAt: string;
+};
+
+const truncate = (value: string | undefined | null, max = 800) => {
+	if (!value) return undefined;
+	if (value.length <= max) return value;
+	return `${value.slice(0, Math.max(0, max - 1))}…`;
+};
+
+const isBeforeCursor = (item: ActivityFeedItem, cursor: ActivityCursor) => {
+	const itemTime = Date.parse(item.createdAt);
+	const cursorTime = Date.parse(cursor.createdAt);
+	if (Number.isFinite(itemTime) && Number.isFinite(cursorTime)) {
+		if (itemTime < cursorTime) return true;
+		if (itemTime > cursorTime) return false;
+	} else if (item.createdAt !== cursor.createdAt) {
+		return item.createdAt < cursor.createdAt;
+	}
+	return item.id < cursor.id;
+};
+
+export const listActivityFeed = query({
+	args: {
+		limit: v.optional(v.number()),
+		cursor: v.optional(v.object({
+			id: v.string(),
+			createdAt: v.string(),
+		})),
+	},
+	handler: async (ctx, args) => {
+		const userId = await requireUserId(ctx);
+		const limit = Math.min(Math.max(args.limit ?? 150, 25), 500);
+		const cursor = args.cursor ?? null;
+
+		const issues = await ctx.db
+			.query("issues")
+			.withIndex("by_userId_createdAt", (q) => q.eq("userId", userId))
+			.order("desc")
+			.collect();
+
+		const issueMeta = new Map<string, { title: string; status: string }>();
+		const events: ActivityFeedItem[] = [];
+		const perIssueChatLimit = 15;
+		const perIssueCallLimit = 25;
+
+		for (const issue of issues) {
+			const issueId = issue._id as unknown as string;
+			issueMeta.set(issueId, { title: issue.title, status: issue.status });
+
+			events.push({
+				id: `issue-${issue._id}`,
+				createdAt: issue.createdAt,
+				source: "issue",
+				type: "issue.created",
+				issueId,
+				issueTitle: issue.title,
+				summary: `Issue created: ${issue.title}`,
+				metadata: { status: issue.status },
+			});
+
+			const chatRows = await ctx.db
+				.query("chatMessages")
+				.withIndex("by_issue_createdAt", (q) => q.eq("issueId", issueId))
+				.order("desc")
+				.take(perIssueChatLimit);
+			for (const row of chatRows) {
+				const content = typeof row.content === "string" ? row.content.trim() : "";
+				if (!content) continue;
+				const role = row.role;
+				const summary =
+					role === "user"
+						? "You sent a message"
+						: role === "assistant"
+						? "Agent replied"
+						: "System message";
+				const type =
+					role === "user"
+						? "chat.user"
+						: role === "assistant"
+						? "chat.assistant"
+						: "chat.system";
+				events.push({
+					id: `chat-${row._id}`,
+					createdAt: row.createdAt,
+					source: "chat",
+					type,
+					issueId,
+					issueTitle: issue.title,
+					summary,
+					details: truncate(content, 1200),
+					metadata: { role },
+				});
+			}
+
+			const callRows = await ctx.db
+				.query("callEvents")
+				.withIndex("by_issue_createdAt", (q) => q.eq("issueId", issueId))
+				.order("desc")
+				.take(perIssueCallLimit);
+			for (const event of callRows) {
+				const base: ActivityFeedItem = {
+					id: `call-${event._id}`,
+					createdAt: event.createdAt,
+					source: "call",
+					type: `call.${event.type}`,
+					issueId,
+					issueTitle: issue.title,
+					callId: event.callId,
+					summary: "Call update",
+					metadata: {},
+				};
+
+				const status = typeof event.status === "string" ? event.status : undefined;
+				const role = typeof event.role === "string" ? event.role : undefined;
+				const rawContent = typeof event.content === "string" ? event.content.trim() : undefined;
+
+				switch (event.type) {
+					case "lifecycle": {
+						base.summary = status === "ended" ? "Call ended" : status === "started" ? "Call started" : `Call lifecycle update`;
+						if (status) (base.metadata as any).status = status;
+						break;
+					}
+					case "status": {
+						base.summary = "Call status update";
+						if (status) {
+							(base.metadata as any).status = status;
+							base.details = truncate(status, 800);
+						} else if (rawContent) {
+							base.details = truncate(rawContent, 800);
+						}
+						break;
+					}
+					case "recording": {
+						base.summary = "Call recording available";
+						if (rawContent) {
+							try {
+								const payload = JSON.parse(rawContent);
+								if (payload.recordingUrl) (base.metadata as any).recordingUrl = payload.recordingUrl;
+								if (typeof payload.durationSec === "number") (base.metadata as any).durationSec = payload.durationSec;
+								if (typeof payload.cost !== "undefined") (base.metadata as any).cost = payload.cost;
+								base.details = truncate(payload.summary ?? rawContent, 800);
+							} catch {
+								base.details = truncate(rawContent, 800);
+							}
+						}
+						break;
+					}
+					case "monitor": {
+						base.summary = "Live call monitor ready";
+						if (rawContent) {
+							try {
+								const payload = JSON.parse(rawContent);
+								if (payload.listenUrl) (base.metadata as any).monitorListenUrl = payload.listenUrl;
+								if (payload.controlUrl) (base.metadata as any).monitorControlUrl = payload.controlUrl;
+							} catch {
+								base.details = truncate(rawContent, 800);
+							}
+						}
+						break;
+					}
+					case "call-details": {
+						base.summary = "Call metadata updated";
+						if (rawContent) {
+							try {
+								const payload = JSON.parse(rawContent);
+								if (typeof payload.durationSec === "number") (base.metadata as any).durationSec = payload.durationSec;
+								if (payload.startedAt) (base.metadata as any).startedAt = payload.startedAt;
+								if (payload.endedAt) (base.metadata as any).endedAt = payload.endedAt;
+								base.details = truncate(rawContent, 800);
+							} catch {
+								base.details = truncate(rawContent, 800);
+							}
+						}
+						break;
+					}
+					case "transcript": {
+						if (!rawContent) continue;
+						if ((role ?? "").toLowerCase() !== "final") continue; // Only surface final transcripts in feed
+						base.summary = "Final call transcript";
+						base.details = truncate(rawContent, 1200);
+						if (role) (base.metadata as any).role = role;
+						break;
+					}
+					default: {
+						if (rawContent) base.details = truncate(rawContent, 800);
+						if (status) (base.metadata as any).status = status;
+						if (role) (base.metadata as any).role = role;
+						base.summary = `Call event: ${event.type}`;
+					}
+				}
+
+				if (Object.keys(base.metadata ?? {}).length === 0) {
+					delete base.metadata;
+				}
+				events.push(base);
+			}
+		}
+
+		const contextFetchLimit = Math.min(limit * 4, 400);
+		const contexts = await ctx.db
+			.query("orchestrationContexts")
+			.withIndex("by_userId_createdAt", (q) => q.eq("userId", userId))
+			.order("desc")
+			.take(contextFetchLimit);
+
+		for (const context of contexts) {
+			const issueId = context.issueId;
+			const issueTitle = issueId ? issueMeta.get(issueId)?.title : undefined;
+			const contextPreview = truncate(JSON.stringify(context.context, null, 2), 2000);
+			events.push({
+				id: `context-${context._id}`,
+				createdAt: context.createdAt,
+				source: "context",
+				type: "context.capture",
+				issueId: issueId,
+				issueTitle,
+				summary: context.summary ?? (issueId ? "Issue context updated" : "Context captured"),
+				details: context.summary ? contextPreview : undefined,
+				metadata: {
+					source: context.source,
+					contextPreview,
+				},
+			});
+		}
+
+		events.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+		const filtered = cursor ? events.filter((item) => isBeforeCursor(item, cursor)) : events;
+		const pageItems = filtered.slice(0, limit);
+		const hasMore = filtered.length > limit;
+		const nextCursor: ActivityCursor | null = hasMore && pageItems.length > 0
+			? {
+				id: pageItems[pageItems.length - 1].id,
+				createdAt: pageItems[pageItems.length - 1].createdAt,
+			}
+			: null;
+
+		return {
+			items: pageItems,
+			nextCursor,
+			hasMore,
+		};
+	},
+});
+
 export const setContext = mutation({
 	args: {
 		context: v.any(),

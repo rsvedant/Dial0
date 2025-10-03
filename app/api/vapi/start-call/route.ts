@@ -309,7 +309,7 @@ export async function POST(req: NextRequest) {
         // Transcriber config
         transcriber: {
           provider: 'deepgram',
-          model: 'nova-3',
+          model: 'flux-general-en',
           language: 'en',
         },
       },

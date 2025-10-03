@@ -86,13 +86,13 @@ export default function FooterSection() {
           <div className="flex flex-col justify-start items-start gap-3 flex-1 min-w-[120px]">
             <div className="text-[rgba(73,66,61,0.50)] text-sm font-medium leading-5 font-sans">Company</div>
             <div className="flex flex-col justify-center items-start gap-2 text-sm leading-5 font-sans">
-              <a href="mailto:contact@dial0.ai" className="text-[#49423D] hover:text-[#37322F] transition-colors">
-                Email contact@dial0.ai
+              <a href="mailto:contact@dial0.dev" className="text-[#49423D] hover:text-[#37322F] transition-colors">
+                Email contact@dial0.dev
               </a>
-              <a href="https://x.com/dialzeroai" className="text-[#49423D] hover:text-[#37322F] transition-colors" target="_blank" rel="noreferrer">
+              <a href="https://x.com/dial0dotdev" className="text-[#49423D] hover:text-[#37322F] transition-colors" target="_blank" rel="noreferrer">
                 X / Twitter
               </a>
-              <a href="https://www.linkedin.com/company/dialzero" className="text-[#49423D] hover:text-[#37322F] transition-colors" target="_blank" rel="noreferrer">
+              <a href="https://www.linkedin.com/company/dial0" className="text-[#49423D] hover:text-[#37322F] transition-colors" target="_blank" rel="noreferrer">
                 LinkedIn
               </a>
               <Link href="/dashboard" className="text-[#49423D] hover:text-[#37322F] transition-colors">

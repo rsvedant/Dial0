@@ -10,7 +10,7 @@ import SmartSimpleBrilliant from "@/components/landing-sections/smart-simple-bri
 import YourWorkInSync from "@/components/landing-sections/your-work-in-sync"
 import EffortlessIntegration from "@/components/landing-sections/effortless-integration-updated"
 import NumbersThatSpeak from "@/components/landing-sections/numbers-that-speak"
-import DocumentationSection from "@/components/landing-sections/documentation-section"
+import { AgenticSearchDiagram } from "@/components/landing-sections/agentic-search-diagram"
 import TestimonialsSection from "@/components/landing-sections/testimonials-section"
 import FAQSection from "@/components/landing-sections/faq-section"
 import PricingSection from "@/components/landing-sections/pricing-section"
@@ -219,9 +219,9 @@ export default function LandingPage() {
                           }`}
                         >
                           <img
-                            src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/dsadsadsa.jpg-xTHS4hGwCWp2H5bTj8np6DXZUyrxX7.jpeg"
-                            alt="Schedules Dashboard - Customer Subscription Management"
-                            className="w-full h-full object-cover"
+                            src="/Dial0_screenshot1.jpg"
+                            alt="Submit the case - DialZero Interface"
+                            className="w-full h-full object-contain"
                           />
                         </div>
 
@@ -231,9 +231,9 @@ export default function LandingPage() {
                           }`}
                         >
                           <img
-                            src="/analytics-dashboard-with-charts-graphs-and-data-vi.jpg"
+                            src="/Dial0_screenshot2.png"
                             alt="Analytics Dashboard"
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-contain"
                           />
                         </div>
 
@@ -243,7 +243,7 @@ export default function LandingPage() {
                           }`}
                         >
                           <img
-                            src="/data-visualization-dashboard-with-interactive-char.jpg"
+                            src="/Dial0_screenshot3.png"
                             alt="Data Visualization Dashboard"
                             className="w-full h-full object-contain"
                           />
@@ -302,102 +302,6 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              <div
-                id="capabilities"
-                className="w-full border-b border-[rgba(55,50,47,0.12)] flex flex-col justify-center items-center"
-              >
-                <div className="self-stretch px-4 sm:px-6 md:px-24 py-8 sm:py-12 md:py-16 border-b border-[rgba(55,50,47,0.12)] flex justify-center items-center gap-6">
-                  <div className="w-full max-w-[586px] px-4 sm:px-6 py-4 sm:py-5 shadow-[0px_8px_24px_rgba(55,50,47,0.08)] overflow-hidden rounded-lg flex flex-col justify-start items-center gap-3 sm:gap-4">
-                    <Badge
-                      icon={
-                        <svg width="12" height="10" viewBox="0 0 12 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <rect x="1" y="3" width="4" height="6" stroke="#37322F" strokeWidth="1" fill="none" />
-                          <rect x="7" y="1" width="4" height="8" stroke="#37322F" strokeWidth="1" fill="none" />
-                          <rect x="2" y="4" width="1" height="1" fill="#37322F" />
-                          <rect x="3.5" y="4" width="1" height="1" fill="#37322F" />
-                          <rect x="2" y="5.5" width="1" height="1" fill="#37322F" />
-                          <rect x="3.5" y="5.5" width="1" height="1" fill="#37322F" />
-                          <rect x="8" y="2" width="1" height="1" fill="#37322F" />
-                          <rect x="9.5" y="2" width="1" height="1" fill="#37322F" />
-                          <rect x="8" y="3.5" width="1" height="1" fill="#37322F" />
-                          <rect x="9.5" y="3.5" width="1" height="1" fill="#37322F" />
-                          <rect x="8" y="5" width="1" height="1" fill="#37322F" />
-                          <rect x="9.5" y="5" width="1" height="1" fill="#37322F" />
-                        </svg>
-                      }
-                      text="Social Proof"
-                    />
-                    <div className="w-full max-w-[472.55px] text-center flex justify-center flex-col text-[#49423D] text-xl sm:text-2xl md:text-3xl lg:text-5xl font-semibold leading-tight md:leading-[60px] font-sans tracking-tight">
-                      Teams ship faster with DialZero
-                    </div>
-                    <div className="self-stretch text-center text-[#605A57] text-sm sm:text-base font-normal leading-6 sm:leading-7 font-sans">
-                      Hand off the hold music while keeping receipts, transcripts, and commitments synced to your operating system.
-                      <br className="hidden sm:block" />
-                      DialZero keeps founders, ops, and finance aligned without pausing product work.
-                    </div>
-                  </div>
-                </div>
-
-                <div className="self-stretch border-[rgba(55,50,47,0.12)] flex justify-center items-start border-t border-b-0">
-                  <div className="w-4 sm:w-6 md:w-8 lg:w-12 self-stretch relative overflow-hidden">
-                    <div className="w-[120px] sm:w-[140px] md:w-[162px] left-[-40px] sm:left-[-50px] md:left-[-58px] top-[-120px] absolute flex flex-col justify-start items-start">
-                      {Array.from({ length: 50 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className="self-stretch h-3 sm:h-4 rotate-[-45deg] origin-top-left outline-[0.5px] outline-[rgba(3,7,18,0.08)] outline-offset-[-0.25px]"
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 gap-0 border-l border-r border-[rgba(55,50,47,0.12)]">
-                    {socialProofLabels.map((label, index) => {
-                      const isMobileFirstColumn = index % 2 === 0
-                      const isDesktopFirstColumn = index % 4 === 0
-                      const isDesktopLastColumn = index % 4 === 3
-                      const isDesktopTopRow = index < 4
-                      const isDesktopBottomRow = index >= 4
-
-                      return (
-                        <div
-                          key={index}
-                          className={`
-                            h-24 xs:h-28 sm:h-32 md:h-36 lg:h-40 flex justify-center items-center gap-1 xs:gap-2 sm:gap-3
-                            border-b border-[rgba(227,226,225,0.5)]
-                            ${index >= 6 ? "border-b" : ""}
-                            ${isMobileFirstColumn ? "border-r-[0.5px]" : ""}
-                            sm:border-r-[0.5px] sm:border-l-0
-                            ${isDesktopFirstColumn ? "md:border-l" : "md:border-l-[0.5px]"}
-                            ${isDesktopLastColumn ? "md:border-r" : "md:border-r-[0.5px]"}
-                            ${isDesktopTopRow ? "md:border-b-[0.5px]" : ""}
-                            ${isDesktopBottomRow ? "md:border-t-[0.5px] md:border-b" : ""}
-                            border-[#E3E2E1]
-                          `}
-                        >
-                          <div className="w-6 h-6 xs:w-7 xs:h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 lg:w-10 lg:h-10 relative shadow-[0px_-4px_8px_rgba(255,255,255,0.64)_inset] overflow-hidden rounded-full">
-                            <img src="/horizon-icon.svg" alt="Horizon" className="w-full h-full object-contain" />
-                          </div>
-                          <div className="text-center flex justify-center flex-col text-[#37322F] text-sm xs:text-base sm:text-lg md:text-xl lg:text-2xl font-medium leading-tight md:leading-9 font-sans">
-                            {label}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-
-                  <div className="w-4 sm:w-6 md:w-8 lg:w-12 self-stretch relative overflow-hidden">
-                    <div className="w-[120px] sm:w-[140px] md:w-[162px] left-[-40px] sm:left-[-50px] md:left-[-58px] top-[-120px] absolute flex flex-col justify-start items-start">
-                      {Array.from({ length: 50 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className="self-stretch h-3 sm:h-4 rotate-[-45deg] origin-top-left outline-[0.5px] outline-[rgba(3,7,18,0.08)] outline-offset-[-0.25px]"
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               <div className="w-full border-b border-[rgba(55,50,47,0.12)] flex flex-col justify-center items-center">
                 <div className="self-stretch px-4 sm:px-6 md:px-8 lg:px-0 lg:max-w-[1060px] lg:w-[1060px] py-8 sm:py-12 md:py-16 border-b border-[rgba(55,50,47,0.12)] flex justify-center items-center gap-6">
                   <div className="w-full max-w-[616px] lg:w-[616px] px-4 sm:px-6 py-4 sm:py-5 shadow-[0px_8px_24px_rgba(55,50,47,0.08)] overflow-hidden rounded-lg flex flex-col justify-start items-center gap-3 sm:gap-4">
@@ -410,15 +314,17 @@ export default function LandingPage() {
                           <rect x="7" y="7" width="4" height="4" stroke="#37322F" strokeWidth="1" fill="none" />
                         </svg>
                       }
-                      text="Bento grid"
+                      text="Capabilities"
                     />
                     <div className="w-full max-w-[598.06px] lg:w-[598.06px] text-center flex justify-center flex-col text-[#49423D] text-xl sm:text-2xl md:text-3xl lg:text-5xl font-semibold leading-tight md:leading-[60px] font-sans tracking-tight">
-                      Built for absolute clarity and focused work
+                      Built such that a customer
+                      <br />
+                      never has to pick up the phone again.
                     </div>
                     <div className="self-stretch text-center text-[#605A57] text-sm sm:text-base font-normal leading-6 sm:leading-7 font-sans">
-                      Stay focused with tools that organize, connect
+                      Stay focused on what matters
                       <br />
-                      and turn information into confident decisions.
+                      and let DialZero handle the rest.
                     </div>
                   </div>
                 </div>
@@ -578,7 +484,7 @@ export default function LandingPage() {
                 </div>
               </section>
 
-              <DocumentationSection />
+              <AgenticSearchDiagram />
               <TestimonialsSection />
               <PricingSection />
               <FAQSection />

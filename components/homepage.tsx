@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Plus, MessageSquare, Clock, CheckCircle2, Menu } from "lucide-react"
 import { Logo } from "@/components/logo"
+import Image from "next/image"
 
 interface HomepageProps {
   onCreateIssue: () => void
@@ -31,14 +32,18 @@ export function Homepage({ onCreateIssue, issueStats, onOpenMenu }: HomepageProp
         <div className="w-12" />
       </div>
       <div className="text-center max-w-md animate-fade-in-up">
-        <div className="mb-8">
-          <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-scale-in">
-            <MessageSquare className="h-8 w-8 text-primary" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground mb-2">DialZero</h1>
+        <div className="mb-2">
+          <Image 
+            src="/D0.png" 
+            alt="DialZero Logo" 
+            width={100}
+            height={100} 
+            className="object-contain mx-auto mb-0 animate-scale-in"
+          />
+          {/* <h1 className="text-2xl font-bold text-foreground mb-2">DialZero</h1>
           <p className="text-muted-foreground text-sm leading-relaxed">
             Automating customer service calls. Never call customer service again.
-          </p>
+          </p> */}
         </div>
 
         <Button
@@ -49,46 +54,46 @@ export function Homepage({ onCreateIssue, issueStats, onOpenMenu }: HomepageProp
           Create New Issue
         </Button>
 
-        <div className="grid grid-cols-2 gap-4 text-center">
+        <div className="grid grid-cols-2 gap-6 text-center">
           <div
-            className="p-4 rounded-xl bg-card border border-border animate-fade-in-up hover:shadow-sm transition-all duration-300"
+            className="p-6 rounded-xl bg-card border border-border animate-fade-in-up hover:shadow-sm transition-all duration-300"
             style={{ animationDelay: "0.1s" }}
           >
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs font-medium text-muted-foreground">Open</span>
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <MessageSquare className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">Open</span>
             </div>
-            <p className="text-xl font-bold text-foreground">{issueStats.open}</p>
+            <p className="text-3xl font-bold text-foreground">{issueStats.open}</p>
           </div>
           <div
-            className="p-4 rounded-xl bg-card border border-border animate-fade-in-up hover:shadow-sm transition-all duration-300"
+            className="p-6 rounded-xl bg-card border border-border animate-fade-in-up hover:shadow-sm transition-all duration-300"
             style={{ animationDelay: "0.2s" }}
           >
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs font-medium text-muted-foreground">In Progress</span>
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <Clock className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">In Progress</span>
             </div>
-            <p className="text-xl font-bold text-foreground">{issueStats.inProgress}</p>
+            <p className="text-3xl font-bold text-foreground">{issueStats.inProgress}</p>
           </div>
           <div
-            className="p-4 rounded-xl bg-card border border-border animate-fade-in-up hover:shadow-sm transition-all duration-300"
+            className="p-6 rounded-xl bg-card border border-border animate-fade-in-up hover:shadow-sm transition-all duration-300"
             style={{ animationDelay: "0.3s" }}
           >
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs font-medium text-muted-foreground">Resolved</span>
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <CheckCircle2 className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">Resolved</span>
             </div>
-            <p className="text-xl font-bold text-foreground">{issueStats.resolved}</p>
+            <p className="text-3xl font-bold text-foreground">{issueStats.resolved}</p>
           </div>
           <div
-            className="p-4 rounded-xl bg-card border border-border animate-fade-in-up hover:shadow-sm transition-all duration-300"
+            className="p-6 rounded-xl bg-card border border-border animate-fade-in-up hover:shadow-sm transition-all duration-300"
             style={{ animationDelay: "0.4s" }}
           >
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs font-medium text-muted-foreground">Total</span>
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <MessageSquare className="h-5 w-5 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">Total</span>
             </div>
-            <p className="text-xl font-bold text-foreground">{issueStats.total}</p>
+            <p className="text-3xl font-bold text-foreground">{issueStats.total}</p>
           </div>
         </div>
       </div>

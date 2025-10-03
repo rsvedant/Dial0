@@ -50,7 +50,7 @@ export function IssuesSidebar({
       {/* iOS-style Header */}
       <div className="safe-top bg-background/95 backdrop-blur-xl border-b border-border/50">
         <div className="px-4 py-3">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-6">
             <div className="flex-1 flex items-center justify-center">
               <Logo width={160} height={40} className="max-w-full" />
             </div>

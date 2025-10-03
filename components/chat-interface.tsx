@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
-import type { Issue, Message } from "@/app/page"
+import type { Issue, Message } from "@/app/dashboard/page"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw"
@@ -220,6 +220,8 @@ const messageTypeConfig = {
 export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }: ChatInterfaceProps) {
   const [newMessage, setNewMessage] = useState("")
   const [expandedTranscripts, setExpandedTranscripts] = useState<Set<string>>(new Set())
+  const headerRef = useRef<HTMLDivElement | null>(null)
+  const [headerHeight, setHeaderHeight] = useState(0)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -311,6 +313,23 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
     }
   }, [])
 
+  useEffect(() => {
+    if (!headerRef.current) return
+
+    const updateHeight = () => {
+      setHeaderHeight(headerRef.current?.offsetHeight ?? 0)
+    }
+
+    updateHeight()
+
+    const observer = new ResizeObserver(() => updateHeight())
+    observer.observe(headerRef.current)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+
   // Auto-resize textarea based on content
   useEffect(() => {
     const textarea = inputRef.current
@@ -385,7 +404,7 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
     <div className="flex flex-col h-full min-h-0 overflow-hidden bg-background ios-no-bounce">
       <ScrollArea className="flex-1 min-h-0 overflow-hidden" ref={scrollAreaRef}>
         {/* Sticky in-viewport header to avoid iOS fixed-position issues */}
-        <div className="sticky top-0 z-30 safe-area bg-background/95 backdrop-blur-sm border-b border-border">
+        <div ref={headerRef} className="sticky top-0 z-30 safe-area bg-background/95 backdrop-blur-sm border-b border-border">
           <div className="px-4 h-18">
             <div className="flex items-center gap-3 justify-between mb-3">
               <Button
@@ -408,8 +427,13 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
             </div>
           </div>
         </div>
-
-        <div className="p-4 pb-28 lg:pb-28" style={{minHeight: 'calc(100vh - 100px)'}} >
+        <div
+          className="px-4 pb-28 lg:pb-28"
+          style={{
+            minHeight: 'calc(100vh - 100px)',
+            paddingTop: headerHeight ? headerHeight + 16 : undefined,
+          }}
+        >
           <div className="space-y-4 max-w-4xl mx-auto">
             <div className="h-2" aria-hidden />
           {enhancedMessages.map((message, index) => {
