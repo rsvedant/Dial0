@@ -241,7 +241,7 @@ export async function POST(req: NextRequest) {
       }
       return s
     }
-    let dialNumber = normalizePhone(context?.contact?.phoneNumber) || '+14082101111'
+    let dialNumber = normalizePhone(context?.contact?.phoneNumber) || ''
 
     // Fetch settings to determine voice override (transient assistant override) and test mode
     let settings: any | null = null

@@ -4,9 +4,6 @@ import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
 import type { Issue, Message } from "@/app/dashboard/page"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
-import rehypeRaw from "rehype-raw"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -27,143 +24,17 @@ import {
   Info,
   Sparkles,
   Menu,
-  Camera,
-  Play,
-  Pause,
   Radio,
   Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Slider } from "@/components/ui/slider"
 import { useCallAudio } from "@/hooks/use-call-audio"
-// Compact inline audio player for recorded calls
-function InlineAudioPlayer({ src }: { src: string }) {
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [duration, setDuration] = useState(0)
-  const [current, setCurrent] = useState(0)
-
-  const fmt = (t: number) => {
-    const m = Math.floor(t / 60)
-    const s = Math.floor(t % 60)
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  }
-
-  useEffect(() => {
-    const a = audioRef.current
-    if (!a) return
-    const onLoaded = () => setDuration(a.duration || 0)
-    const onTime = () => setCurrent(a.currentTime || 0)
-    const onEnded = () => setIsPlaying(false)
-    a.addEventListener('loadedmetadata', onLoaded)
-    a.addEventListener('timeupdate', onTime)
-    a.addEventListener('ended', onEnded)
-    return () => {
-      a.removeEventListener('loadedmetadata', onLoaded)
-      a.removeEventListener('timeupdate', onTime)
-      a.removeEventListener('ended', onEnded)
-    }
-  }, [])
-
-  const toggle = async () => {
-    const a = audioRef.current
-    if (!a) return
-    if (a.paused) {
-      try { await a.play() } catch {}
-      setIsPlaying(true)
-    } else {
-      a.pause()
-      setIsPlaying(false)
-    }
-  }
-
-  const seek = (vals: number[]) => {
-    const a = audioRef.current
-    if (!a || !vals?.length) return
-    const t = Math.min(Math.max(vals[0], 0), duration || 0)
-    a.currentTime = t
-    setCurrent(t)
-  }
-
-  const pct = duration > 0 ? (current / duration) * 100 : 0
-
-  return (
-    <div className="w-full rounded-xl border border-border bg-muted/40 px-3 py-2">
-      <div className="flex items-center gap-3">
-        <Button size="sm" variant="secondary" className="h-8 px-2" onClick={toggle}>
-          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-        </Button>
-        <div className="flex-1">
-          <Slider value={[duration ? current : 0]} min={0} max={Math.max(duration, 1)} step={0.1} onValueChange={seek} className="w-full" />
-          <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-            <span>{fmt(current)}</span>
-            <span>{fmt(duration)}</span>
-          </div>
-        </div>
-      </div>
-      <audio ref={audioRef} src={src} preload="metadata" />
-    </div>
-  )
-}
-// Markdown renderer with custom styling
-function MarkdownContent({ content }: { content: string }) {
-  return (
-    <div className="prose prose-sm dark:prose-invert max-w-none">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
-        components={{
-        // Custom styling for markdown elements
-        p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-        a: ({ children, href }) => (
-          <a href={href} className="text-primary hover:underline font-medium" target="_blank" rel="noopener noreferrer">
-            {children}
-          </a>
-        ),
-        code: ({ inline, children, ...props }: any) =>
-          inline ? (
-            <code className="px-1.5 py-0.5 rounded bg-muted text-foreground font-mono text-xs" {...props}>
-              {children}
-            </code>
-          ) : (
-            <code className="block p-3 rounded-lg bg-muted text-foreground font-mono text-xs overflow-x-auto" {...props}>
-              {children}
-            </code>
-          ),
-        pre: ({ children }) => <pre className="mb-2 last:mb-0 overflow-x-auto">{children}</pre>,
-        ul: ({ children }) => <ul className="mb-2 last:mb-0 ml-4 list-disc space-y-1">{children}</ul>,
-        ol: ({ children }) => <ol className="mb-2 last:mb-0 ml-4 list-decimal space-y-1">{children}</ol>,
-        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-        h1: ({ children }) => <h1 className="text-lg font-bold mb-2 mt-3 first:mt-0">{children}</h1>,
-        h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-3 first:mt-0">{children}</h2>,
-        h3: ({ children }) => <h3 className="text-sm font-bold mb-2 mt-2 first:mt-0">{children}</h3>,
-        blockquote: ({ children }) => (
-          <blockquote className="border-l-4 border-primary/30 pl-3 py-1 my-2 italic text-muted-foreground">
-            {children}
-          </blockquote>
-        ),
-        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-        em: ({ children }) => <em className="italic">{children}</em>,
-        hr: () => <hr className="my-3 border-border" />,
-        table: ({ children }) => (
-          <div className="overflow-x-auto my-2">
-            <table className="min-w-full border-collapse border border-border text-xs">{children}</table>
-          </div>
-        ),
-        thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
-        th: ({ children }) => <th className="border border-border px-2 py-1 text-left font-semibold">{children}</th>,
-        td: ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
-      }}
-    >
-      {content}
-    </ReactMarkdown>
-    </div>
-  )
-}
-
+import { MarkdownContent } from "@/components/chat/markdown-content"
+import type { ChatMessage } from "@/hooks/use-chat"
 import { useChat } from "@/hooks/use-chat"
 import { TimelineIndicator } from "@/components/timeline-indicator"
 import { IssueIcon } from "@/components/issue-icon"
+import { LiveCallTranscript } from "@/components/chat/live-call-transcript"
 
 interface ChatInterfaceProps {
   issue: Issue
@@ -438,133 +309,77 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
             <div className="h-2" aria-hidden />
           {enhancedMessages.map((message, index) => {
             const isUser = message.sender === "user"
-            const messageConfig = messageTypeConfig[message.type || "text"]
-            const MessageIcon = messageConfig.icon
-            const isExpanded = expandedTranscripts.has(message.id)
             const anyMsg: any = message as any
             const listenUrl: string | undefined = anyMsg?.monitor?.listenUrl
-            const isEnded: boolean = Boolean(anyMsg?.isEnded)
-            const recordingUrl: string | undefined = anyMsg?.recordingUrl
+
+            const callSummaryNoise =
+              message.sender === "system" &&
+              /call (started|stopped|ended)|end of call report|generating final report/i.test(message.content ?? "")
+
+            if (callSummaryNoise) {
+              return null
+            }
 
             return (
               <div
                 key={message.id}
-                className={cn("flex gap-3 animate-fade-in-up", isUser ? "justify-end" : "justify-start")}
+                className={cn(
+                  "flex flex-col space-y-2",
+                  isUser ? "items-end" : "items-start"
+                )}
                 style={{ animationDelay: `${index * 0.05}s` }}
               >
-
-                <div className={cn("max-w-[75%] transition-all duration-300", isUser && "ml-auto")}> 
-                  <div
-                    className={cn(
-                      "rounded-3xl px-6 py-4 transition-all duration-300",
-                      isUser
-                        ? "bg-primary text-primary-foreground liquid-glass-button"
-                        : "liquid-glass-card text-card-foreground",
-                    )}
-                  >
-                    {message.type === "transcript" ? (
-                      <div>
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-medium">{message.content}</p>
-                          <div className="flex items-center gap-1">
-                            {/* Listen Live control */}
-                            {listenUrl && !isEnded && (
-                              activeListenUrl === listenUrl ? (
-                                isCallConnecting ? (
-                                  <Button variant="secondary" size="sm" className="h-7 px-2" disabled>
-                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Connecting
-                                  </Button>
-                                ) : isCallPlaying ? (
-                                  <Button variant="secondary" size="sm" className="h-7 px-2" onClick={stopCallAudio}>
-                                    <Pause className="h-3 w-3 mr-1" /> Stop
-                                  </Button>
-                                ) : (
-                                  <Button variant="secondary" size="sm" className="h-7 px-2" onClick={() => startCallAudio(listenUrl)} disabled={!canPlayCallAudio}>
-                                    <Radio className="h-3 w-3 mr-1" /> Listen live
-                                  </Button>
-                                )
-                              ) : (
-                                <Button variant="secondary" size="sm" className="h-7 px-2" onClick={() => startCallAudio(listenUrl)}>
-                                  <Radio className="h-3 w-3 mr-1" /> Listen live
-                                </Button>
-                              )
-                            )}
-                            {callAudioError && activeListenUrl === listenUrl && (
-                              <span className="text-xs text-red-500 ml-2">{callAudioError}</span>
-                            )}
-                            {/* Live badge while call is ongoing */}
-                            {!isEnded && (
-                              <span className="ml-1 inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-300 border border-red-500/30">
-                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
-                                Live
-                              </span>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => toggleTranscript(message.id)}
-                              className="h-6 w-6 p-0 ml-1"
-                            >
-                              {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                            </Button>
-                          </div>
-                        </div>
-
-                        {/* Inline recording player */}
-                        {recordingUrl && (
-                          <div className="mt-2">
-                            <InlineAudioPlayer src={recordingUrl} />
-                          </div>
-                        )}
-
-                        {isExpanded && message.transcript && (
-                          <div className="mt-3 space-y-2 border-t border-amber-200 dark:border-amber-800 pt-3">
-                            {message.transcript?.map((exchange, idx) => (
-                              <div key={idx} className="space-y-1">
-                                <div className="flex items-start gap-2">
-                                  <User className="h-3 w-3 mt-1 text-muted-foreground" />
-                                  <p className="text-xs text-muted-foreground">{exchange.user}</p>
-                                </div>
-                                <div className="flex items-start gap-2">
-                                  <Bot className="h-3 w-3 mt-1 text-muted-foreground" />
-                                  <p className="text-xs text-muted-foreground">{exchange.system}</p>
-                                </div>
-                                {idx < (message.transcript?.length || 0) - 1 && (
-                                  <div className="h-px bg-amber-200 dark:bg-amber-800 my-2" />
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-sm">
-                        <MarkdownContent content={message.content} />
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between mt-2">
-                      <p
-                        className={cn(
-                          "text-xs opacity-70 font-medium",
-                          isUser ? "text-primary-foreground" : "text-muted-foreground",
-                        )}
-                      >
-                        {message.timestamp.toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
-
-                      {message.type && message.type !== "text" && (
-                        <Badge variant="secondary" className="text-xs px-2 py-0.5 capitalize">
-                          {message.type}
-                        </Badge>
-                      )}
+                <div
+                  className={cn(
+                    "rounded-3xl px-6 py-4 transition-all duration-300",
+                    isUser
+                      ? "bg-primary text-primary-foreground liquid-glass-button"
+                      : "liquid-glass-card text-card-foreground",
+                  )}
+                >
+                  {message.type === "transcript" ? (
+                    <LiveCallTranscript
+                      message={message as ChatMessage}
+                      listenUrl={listenUrl}
+                      isActive={listenUrl ? activeListenUrl === listenUrl : false}
+                      onStartLive={startCallAudio}
+                      onStopLive={stopCallAudio}
+                      audioState={{
+                        isPlaying: isCallPlaying,
+                        isConnecting: isCallConnecting,
+                        error: callAudioError,
+                        canPlay: canPlayCallAudio,
+                      }}
+                    />
+                  ) : (
+                    <div className={cn("text-sm", isUser ? "text-white" : undefined)}>
+                      <MarkdownContent
+                        content={message.content}
+                        className={isUser ? "text-white prose-invert" : undefined}
+                      />
                     </div>
+                  )}
+
+                  <div className="flex items-center justify-between mt-2">
+                    <p
+                      className={cn(
+                        "text-xs opacity-70 font-medium",
+                        isUser ? "text-primary-foreground" : "text-muted-foreground",
+                      )}
+                    >
+                      {message.timestamp.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+
+                    {message.type && message.type !== "text" && (
+                      <Badge variant="secondary" className="text-xs px-2 py-0.5 capitalize">
+                        {message.type}
+                      </Badge>
+                    )}
                   </div>
                 </div>
-
               </div>
             )
           })}

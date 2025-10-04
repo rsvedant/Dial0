@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { api } from '@/convex/_generated/api'
+import { fetchQuery } from 'convex/nextjs'
+
+const ISSUE_RATE_LIMIT_MS = 10_000
+const issueRateLimit = new Map<string, number>()
 
 // Schema validation for context (same as start-call route)
 const contextSchema = z.object({
@@ -49,6 +54,45 @@ const contextSchema = z.object({
     general: z.string().optional(),
   }).optional(),
 })
+
+function normalizeToken(raw: string | null | undefined) {
+  if (!raw) return null
+  let token = raw.trim()
+  if (!token) return null
+  while (token.endsWith('.')) {
+    token = token.slice(0, -1)
+  }
+  return token || null
+}
+
+async function verifyAuthToken(token: string | null | undefined) {
+  const authToken = normalizeToken(token)
+
+  if (!authToken) {
+    return { valid: false, settings: null, error: 'Missing auth token', token: null }
+  }
+
+  try {
+    const settings = await fetchQuery(api.orchestration.getSettings, {}, { token: authToken })
+    if (!settings) {
+      console.warn('[MCP] getSettings returned null for token; treating as valid', { token: authToken })
+    }
+    return { valid: true, settings, token: authToken }
+  } catch (error) {
+    console.error('[MCP] Auth token verification failed:', error)
+    return { valid: false, settings: null, error: 'Invalid auth token or failed fetching settings', token: null }
+  }
+}
+
+function logRequest(req: NextRequest, parsedBody: unknown) {
+  try {
+    const headers = Object.fromEntries(req.headers.entries())
+    console.log('[MCP] Incoming request headers:', headers)
+    console.log('[MCP] Incoming request body:', parsedBody)
+  } catch (error) {
+    console.warn('[MCP] Failed logging request payload:', error)
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -173,10 +217,70 @@ export async function POST(req: NextRequest) {
 
     // Handle call_tool request
     if (method === 'tools/call') {
+      logRequest(req, body)
+
       const { name, arguments: args } = params
+      const issueId = args?.issueId ?? null
+
+      if (issueId) {
+        const now = Date.now()
+        const last = issueRateLimit.get(issueId) ?? 0
+        if (now - last < ISSUE_RATE_LIMIT_MS) {
+          const retryMs = ISSUE_RATE_LIMIT_MS - (now - last)
+          return NextResponse.json(
+            {
+              jsonrpc: '2.0',
+              id,
+              error: {
+                code: -32002,
+                message: 'Rate limit exceeded for issue',
+                data: { issueId, retryAfterMs: retryMs },
+              },
+            },
+            { status: 429 }
+          )
+        }
+        issueRateLimit.set(issueId, now)
+      }
+
+      const candidateToken = args?.authToken ?? null
+      const tokenCheck = await verifyAuthToken(candidateToken)
+      if (!tokenCheck.valid) {
+        return NextResponse.json(
+          {
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32001,
+              message: 'Unauthorized: invalid or missing auth token',
+              data: tokenCheck.error,
+            },
+          },
+          { status: 401 }
+        )
+      }
 
       if (name === 'start_call') {
         const { issueId, authToken, context } = args
+
+        const tokenToUse = tokenCheck.token ?? normalizeToken(authToken)
+        const tokenVerification = tokenCheck.valid
+          ? tokenCheck
+          : await verifyAuthToken(tokenToUse)
+        if (!tokenVerification.valid) {
+          return NextResponse.json(
+            {
+              jsonrpc: '2.0',
+              id,
+              error: {
+                code: -32001,
+                message: 'Unauthorized: invalid auth token',
+                data: tokenVerification.error,
+              },
+            },
+            { status: 401 }
+          )
+        }
 
         // Validate context
         try {
@@ -203,7 +307,7 @@ export async function POST(req: NextRequest) {
           headers: {
             'Content-Type': 'application/json',
             'issueId': issueId,
-            'authToken': authToken,
+            'authToken': tokenVerification.token ?? tokenToUse ?? '',
           },
           body: JSON.stringify({ context }),
         })

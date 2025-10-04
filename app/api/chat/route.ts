@@ -72,20 +72,17 @@ export async function POST(req: NextRequest) {
     // Use stored conversationId or the one from request
     const activeConversationId = storedChatId || conversationId
 
-    // Only send the LAST message (the new one), not entire history
-    const lastMessage = messages[messages.length - 1]
-
     console.log('Proxying to agent:', {
       url: `${AGENT_BASE_URL}/api/chat`,
       issueId,
       conversationId: activeConversationId,
-      newMessage: lastMessage?.content?.substring(0, 50) + '...',
+      messageCount: messages?.length ?? 0,
       hasSettings: !!settings,
     })
 
-    // Build request body - only send the new message and conversationId if we have one
+    // Build request body with full message history and conversationId if available
     const requestBody: any = { 
-      messages: [lastMessage]
+      messages
     }
     if (activeConversationId) {
       requestBody.conversationId = activeConversationId

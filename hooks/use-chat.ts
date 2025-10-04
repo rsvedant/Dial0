@@ -2,19 +2,101 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '@/convex/_generated/api'
 
-interface ChatMessage {
+export interface TranscriptEntry {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  createdAt: Date
+}
+
+export interface CallStatusEntry {
+  id: string
+  status: string
+  label: string
+  createdAt: Date
+  type: 'status' | 'lifecycle'
+  markdown?: string
+}
+
+export interface CallOutcomeInfo {
+  label: string
+  status: 'pass' | 'fail' | 'unknown'
+  detail?: string
+}
+
+export interface ChatMessage {
   id: string
   content: string
   sender: 'user' | 'system'
   timestamp: Date
   type?: 'text' | 'system' | 'transcript' | 'status' | 'info' | 'data-summary' | 'data-operation' | 'data-component' | 'data-artifact'
   data?: any // For data events
+  transcript?: { user: string; system: string }[]
+  monitor?: { listenUrl?: string; controlUrl?: string }
+  isEnded?: boolean
+  recordingUrl?: string
+  recordingMeta?: any
+  conversation?: TranscriptEntry[]
+  status?: 'pending' | 'in_progress' | 'completed' | 'error'
+  statusLog?: CallStatusEntry[]
+  statusText?: string
+  callId?: string
+  finalTranscript?: TranscriptEntry[]
+  finalTranscriptText?: string
+  finalSummary?: string
+  callOutcome?: CallOutcomeInfo
 }
 
 interface UseChatOptions {
   issueId: string
   onIssueComplete?: (issueDetails: string) => void
   knownContext?: any
+}
+
+function formatListMarkdown(text?: string) {
+  if (!text) return ''
+
+  let result = text
+
+  if (/Summary:\s*/i.test(result)) {
+    result = result.replace(/Summary:\s*/gi, 'Summary:\n\n')
+  }
+
+  if (result.includes('*')) {
+    result = result.replace(/\s*\*\s+/g, '\n* ')
+  }
+
+  return result.trim()
+}
+
+function parseFinalTranscript(raw: string, baseTime: Date, callKey: string): TranscriptEntry[] {
+  const normalized = raw?.replace(/\r\n/g, '\n') ?? ''
+  if (!normalized.trim()) return []
+
+  const segments = normalized
+    .split(/(?=(?:AI|User)\s*:)/gi)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+
+  const entries: TranscriptEntry[] = []
+
+  segments.forEach((segment, index) => {
+    const match = segment.match(/^(AI|User)\s*:\s*(.*)$/i)
+    if (!match) return
+
+    const roleLabel = match[1].toLowerCase()
+    const content = (match[2] ?? '').trim()
+    if (!content) return
+
+    entries.push({
+      id: `${callKey}-final-${index}`,
+      role: roleLabel === 'user' ? 'user' : 'assistant',
+      content,
+      createdAt: new Date(baseTime.getTime() + index),
+    })
+  })
+
+  return entries
 }
 
 export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptions) {
@@ -62,103 +144,276 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
     
     // Add stream event messages (data-summary, data-operation, etc.)
     // Filter out agent_initializing and other noise operations
-    const eventMessages: ChatMessage[] = streamEvents
-      .filter(evt => {
+    const eventMessages: ChatMessage[] = (streamEvents ?? [])
+      .filter((evt: any) => {
         if (!['data-summary', 'data-operation', 'data-component', 'data-artifact'].includes(evt.type)) {
           return false
         }
-        // Hide noisy operation events
+        if (evt.type === 'data-summary') {
+          const label = evt.data?.label || evt.data?.content || evt.content || ''
+          if (/call (?:ended|complete)|generating final report/i.test(label)) {
+            return false
+          }
+          return true
+        }
         if (evt.type === 'data-operation') {
           const opType = evt.data?.type
           if (['agent_initializing', 'agent_ready', 'completion'].includes(opType)) {
-            return false // Don't show initialization noise and completion events
+            return false
           }
         }
         return true
       })
-      .map(evt => ({
+      .map((evt: any) => ({
         id: `evt-${Date.now()}-${Math.random()}`,
-        content: evt.type === 'data-summary' 
-          ? evt.data?.label || 'Processing...'
-          : evt.type === 'data-operation'
-          ? `🔧 ${evt.data?.type}${evt.data?.ctx?.agent ? ` (${evt.data.ctx.agent})` : ''}`
-          : evt.type === 'data-component'
-          ? `Component: ${evt.data?.type}`
-          : `Artifact: ${evt.data?.artifact_id}`,
+        content:
+          evt.type === 'data-summary'
+            ? evt.data?.label || 'Processing...'
+            : evt.type === 'data-operation'
+            ? `🔧 ${evt.data?.type}${evt.data?.ctx?.agent ? ` (${evt.data.ctx.agent})` : ''}`
+            : evt.type === 'data-component'
+            ? `Component: ${evt.data?.type}`
+            : `Artifact: ${evt.data?.artifact_id}`,
         sender: 'system' as const,
-        timestamp: new Date(),
+        timestamp: evt.createdAt ? new Date(evt.createdAt) : new Date(),
         type: evt.type as any,
         data: evt.data,
       }))
-    
+
     mapped = [...mapped, ...eventMessages]
     
-    // Elevate a single collapsible "call bubble" from call events, if any exist
-    let withCallBubble = mapped
+    // Elevate collapsible call bubbles for each call
+    let withCallBubbles = mapped
     if (callEvents && callEvents.length > 0) {
-      const eventsWithCallId = callEvents.filter((ev) => ev.callId)
-      const latestCallId = eventsWithCallId.length > 0 ? eventsWithCallId[eventsWithCallId.length - 1].callId : null
-      const relevantEvents = latestCallId ? callEvents.filter((ev) => ev.callId === latestCallId) : callEvents
+      const eventsByCall = new Map<string, any[]>()
 
-      // Extract monitor URLs if present
-      const monitorEv = relevantEvents.find(ev => ev.type === 'monitor')
-      let monitor: { listenUrl?: string; controlUrl?: string } | undefined
-      try { monitor = monitorEv?.content ? JSON.parse(monitorEv.content) : undefined } catch {}
-      
-      // Determine if call ended and extract recordingUrl
-      const ended = relevantEvents.some(ev => (ev.type === 'lifecycle' && ev.status === 'ended') || (ev.type === 'status' && /ended/i.test(ev.status || '')))
-      let recordingUrl: string | undefined
-      let recordingMeta: any
-      const recEv = relevantEvents.find(ev => ev.type === 'recording')
-      if (recEv?.content) {
-        try {
-          const obj = JSON.parse(recEv.content)
-          recordingUrl = obj?.recordingUrl
-          recordingMeta = obj
-        } catch {}
+      for (const ev of callEvents) {
+        const key = ev.callId || `call-${ev._id || ev.id || ev.createdAt}`
+        const list = eventsByCall.get(key) || []
+        list.push(ev)
+        eventsByCall.set(key, list)
       }
-      
-      const transcriptPairs: { user: string; system: string }[] = []
-      let pendingUser: string | null = null
-      
-      // Collapse events into paired turns
-      for (const ev of relevantEvents) {
-        if (ev.type === 'transcript' && ev.content) {
-          if ((ev.role || '').toLowerCase() === 'user') {
-            if (pendingUser) transcriptPairs.push({ user: pendingUser, system: '' })
-            pendingUser = ev.content
-          } else {
-            if (pendingUser) {
-              transcriptPairs.push({ user: pendingUser, system: ev.content })
-              pendingUser = null
+
+      const callBubbles = Array.from(eventsByCall.entries()).map(([callKey, events]) => {
+        events.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+
+        const monitorEv = events.find(ev => ev.type === 'monitor')
+        let monitor: { listenUrl?: string; controlUrl?: string } | undefined
+        try { monitor = monitorEv?.content ? JSON.parse(monitorEv.content) : undefined } catch {}
+
+        let ended = events.some(ev => (ev.type === 'lifecycle' && ev.status === 'ended') || (ev.type === 'status' && /ended/i.test(ev.status || '')))
+        let recordingUrl: string | undefined
+        let recordingMeta: any
+        const recEv = events.find(ev => ev.type === 'recording')
+        if (recEv?.content) {
+          try {
+            const obj = JSON.parse(recEv.content)
+            recordingUrl = obj?.recordingUrl
+            recordingMeta = obj
+          } catch {}
+        }
+
+        const transcriptPairs: { user: string; system: string }[] = []
+        let pendingUser: string | null = null
+        const conversationEntries: TranscriptEntry[] = []
+        const statusEntries: CallStatusEntry[] = []
+        let hasStarted = false
+        let hasError = false
+        let statusCounter = 0
+        let transcriptCounter = 0
+        let finalTranscriptRaw: string | undefined
+        let finalTranscriptEntries: TranscriptEntry[] | undefined
+        let finalSummaryMarkdown: string | undefined
+        let callOutcome: CallOutcomeInfo | undefined
+
+        const toStatusLabel = (value: string | undefined) => {
+          if (!value) return 'Status update'
+          const trimmed = value.trim()
+          if (!trimmed) return 'Status update'
+          return trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
+        }
+
+        for (const ev of events) {
+          if (ev.type === 'transcript' && ev.content) {
+            const roleLower = (ev.role || '').toLowerCase()
+            if (roleLower === 'final') {
+              finalTranscriptRaw = ev.content
+              continue
+            }
+            if (roleLower === 'summary') {
+              finalSummaryMarkdown = formatListMarkdown(ev.content)
+              continue
+            }
+            if (roleLower === 'user') {
+              if (pendingUser) transcriptPairs.push({ user: pendingUser, system: '' })
+              pendingUser = ev.content
             } else {
-              transcriptPairs.push({ user: '', system: ev.content })
+              if (pendingUser) {
+                transcriptPairs.push({ user: pendingUser, system: ev.content })
+                pendingUser = null
+              } else {
+                transcriptPairs.push({ user: '', system: ev.content })
+              }
+            }
+
+            const createdAt = new Date(ev.createdAt)
+            const transcriptRole: 'user' | 'assistant' = roleLower === 'user' ? 'user' : 'assistant'
+            const entryId = `${callKey}-line-${ev._id ?? transcriptCounter++}`
+            conversationEntries.push({
+              id: entryId,
+              role: transcriptRole,
+              content: ev.content,
+              createdAt,
+            })
+            if (transcriptRole === 'assistant') {
+              hasStarted = true
+            }
+          }
+
+          if ((ev.type === 'status' || ev.type === 'lifecycle')) {
+            const statusValue = typeof ev.status === 'string' && ev.status.trim().length > 0
+              ? ev.status.trim()
+              : (typeof ev.content === 'string' && ev.content.trim().length > 0 ? ev.content.trim() : ev.type)
+            const markdownValue = formatListMarkdown(statusValue)
+            const createdAt = new Date(ev.createdAt)
+            const entryId = `${callKey}-status-${ev._id ?? statusCounter++}`
+            const isSummaryEntry = /^summary\s*:/i.test(statusValue)
+
+            const statusEntry: CallStatusEntry = {
+              id: entryId,
+              status: statusValue,
+              label: toStatusLabel(statusValue),
+              createdAt,
+              type: ev.type === 'lifecycle' ? 'lifecycle' : 'status',
+              markdown: markdownValue,
+            }
+
+            if (isSummaryEntry) {
+              finalSummaryMarkdown = markdownValue
+            }
+
+            statusEntries.push(statusEntry)
+
+            const outcomeMatch = statusValue.match(/result\s*[:\-]?\s*(.*)$/i)
+            const rawOutcome = outcomeMatch?.[1] ?? ev.result ?? ev.output ?? ''
+            if (!callOutcome) {
+              const lower = `${statusValue} ${rawOutcome}`.toLowerCase()
+              if (/(pass|success|resolved|completed)/i.test(lower)) {
+                callOutcome = {
+                  label: toStatusLabel(statusValue),
+                  status: 'pass',
+                  detail: markdownValue || rawOutcome?.trim(),
+                }
+              } else if (/(fail|failed|error|cancel)/i.test(lower)) {
+                callOutcome = {
+                  label: toStatusLabel(statusValue),
+                  status: 'fail',
+                  detail: markdownValue || rawOutcome?.trim(),
+                }
+              }
+            }
+
+            if (/error|fail|failed|hangup|cancel/i.test(statusValue)) {
+              hasError = true
+            }
+            if (/start|progress|connected|live|speaking|answer/i.test(statusValue.toLowerCase())) {
+              hasStarted = true
+            }
+            if (ev.type === 'lifecycle' && ev.status === 'started') {
+              hasStarted = true
             }
           }
         }
-      }
-      if (pendingUser) transcriptPairs.push({ user: pendingUser, system: '' })
 
-      const latestEventTime = new Date(relevantEvents[relevantEvents.length - 1].createdAt)
-      const bubble: ChatMessage = {
-        id: 'call-bubble-' + issueId,
-        content: 'Live call transcript',
-        sender: 'system',
-        timestamp: latestEventTime,
-        type: 'transcript',
-      } as any
-      ;(bubble as any).transcript = transcriptPairs
-      if (monitor) (bubble as any).monitor = monitor
-      if (ended) (bubble as any).isEnded = true
-      if (recordingUrl) {
-        (bubble as any).recordingUrl = recordingUrl
-        if (recordingMeta) (bubble as any).recordingMeta = recordingMeta
-      }
+        if (conversationEntries.length > 0) {
+          hasStarted = true
+        }
+        if (pendingUser) transcriptPairs.push({ user: pendingUser, system: '' })
 
-      // Insert/replace a single bubble at the end
-      withCallBubble = [...mapped.filter(m => m.id !== bubble.id), bubble]
+        const latestEvent = events[events.length - 1]
+        const latestEventTime = latestEvent?.createdAt ? new Date(latestEvent.createdAt) : new Date()
+
+        if (finalTranscriptRaw) {
+          finalTranscriptEntries = parseFinalTranscript(finalTranscriptRaw, latestEventTime, String(callKey))
+          if (finalTranscriptEntries.length > 0) {
+            transcriptPairs.length = 0
+            conversationEntries.splice(0, conversationEntries.length, ...finalTranscriptEntries)
+            hasStarted = true
+            ended = true
+          }
+        }
+        const bubbleId = `call-bubble-${issueId}-${callKey}`
+
+        const bubble: ChatMessage = {
+          id: bubbleId,
+          content: 'Live call transcript',
+          sender: 'system',
+          timestamp: latestEventTime,
+          type: 'transcript',
+        } as any
+
+        if (transcriptPairs.length > 0) {
+          bubble.transcript = transcriptPairs
+        }
+        if (conversationEntries.length > 0) {
+          bubble.conversation = conversationEntries
+        }
+        if (monitor) (bubble as any).monitor = monitor
+        if (ended) (bubble as any).isEnded = true
+        if (recordingUrl) {
+          (bubble as any).recordingUrl = recordingUrl
+          if (recordingMeta) (bubble as any).recordingMeta = recordingMeta
+        }
+
+        bubble.callId = callKey
+        if (statusEntries.length > 0) {
+          bubble.statusLog = statusEntries
+        }
+
+        if (finalTranscriptEntries && finalTranscriptEntries.length > 0) {
+          bubble.finalTranscript = finalTranscriptEntries
+          bubble.finalTranscriptText = formatListMarkdown(finalTranscriptRaw)
+        }
+
+        if (finalSummaryMarkdown) {
+          bubble.finalSummary = finalSummaryMarkdown
+        }
+
+        if (callOutcome) {
+          bubble.callOutcome = callOutcome
+          if (callOutcome.status === 'fail') {
+            hasError = true
+          }
+        }
+
+        const status: 'pending' | 'in_progress' | 'completed' | 'error' = hasError
+          ? 'error'
+          : ended
+          ? 'completed'
+          : hasStarted
+          ? 'in_progress'
+          : 'pending'
+
+        const hasFinalTranscript = Boolean(finalTranscriptEntries && finalTranscriptEntries.length > 0)
+        const latestStatus = statusEntries[statusEntries.length - 1]?.label
+        const defaultStatusText = latestStatus ?? (
+          status === 'completed'
+            ? 'Call completed'
+            : status === 'in_progress'
+            ? 'Call in progress'
+            : 'Waiting for call to begin'
+        )
+        bubble.status = status
+        bubble.statusText = hasFinalTranscript ? 'Call finished' : defaultStatusText
+
+        return bubble
+      })
+
+      const nonCallMessages = mapped.filter(m => !m.id.startsWith(`call-bubble-${issueId}`))
+      withCallBubbles = [...nonCallMessages, ...callBubbles]
+      withCallBubbles.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
     }
-    setMessages(withCallBubble)
+    setMessages(withCallBubbles)
   }, [convexMessages, callEvents, issueId, streamingMessage, streamEvents])
 
   // Smoothly keep scroll pinned to bottom when new messages arrive
@@ -171,6 +426,19 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
 
     setAiLoading(true)
     setStreamEvents([]) // Clear previous stream events
+
+    // Build full conversation history for the agent request
+    const historyMessages = (convexMessages ?? []).map((row) => {
+      const role = row.role === 'assistant' ? 'assistant'
+        : row.role === 'user' ? 'user'
+        : 'system'
+      return {
+        role,
+        content: row.content,
+      }
+    })
+
+    const outboundMessages = [...historyMessages, { role: 'user', content }]
 
     // Persist user message to Convex first
     try {
@@ -196,7 +464,7 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [{ role: 'user', content }],
+          messages: outboundMessages,
           issueId,
           conversationId: issue?.chatId,
         }),
@@ -338,7 +606,7 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
       setStreamingMessage(null)
       setAiLoading(false)
     }
-  }, [aiLoading, issueId, issue?.chatId, appendMessage, updateIssueStatus, updateIssueChatId])
+  }, [aiLoading, issueId, issue?.chatId, appendMessage, updateIssueStatus, updateIssueChatId, convexMessages])
 
   const resetChat = useCallback(() => {
     setMessages([])
