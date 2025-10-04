@@ -3,6 +3,35 @@
 import { action } from "../_generated/server";
 import { v } from "convex/values";
 
+
+// Helper function to create browser-like headers to bypass Cloudflare
+function getBrowserHeaders(additionalHeaders: Record<string, string> = {}): Record<string, string> {
+  return {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Accept': '*/*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br, zstd',
+    'Origin': 'https://vapi.ai',
+    'Referer': 'https://vapi.ai/',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
+    'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"macOS"',
+    ...additionalHeaders
+  };
+}
+
+// Wrapper function for Vapi API calls with browser headers
+async function fetchVapiAPI(url: string, options: RequestInit = {}): Promise<Response> {
+  const headers = getBrowserHeaders(options.headers as Record<string, string> || {});
+  return fetch(url, {
+    ...options,
+    headers
+  });
+}
+
 // Minimal JWT generation for Vapi auth (HS256)
 function generateVapiJWT(orgId: string, privateKey: string): string {
   const header = { alg: "HS256", typ: "JWT" };
@@ -65,7 +94,7 @@ export const cloneVoiceWithAudioData = action({
   const ext = type.includes('mp3') ? 'mp3' : type.includes('wav') ? 'wav' : type.includes('mpeg') ? 'mp3' : type.includes('webm') ? 'webm' : 'mp3';
   formData.append("files", audioBlob, `${finalVoiceName}.${ext}`);
 
-      const resp = await fetch("https://api.vapi.ai/11labs/voice/clone", {
+      const resp = await fetchVapiAPI("https://api.vapi.ai/11labs/voice/clone", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${jwtToken}`,
