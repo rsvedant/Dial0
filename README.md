@@ -1,6 +1,25 @@
 # Dial0
 
+<div align="center">
+  <img src="./public/DialZero.svg" alt="Dial0 Logo" width="220" height="86" />
+  
+  **Research, call orchestration, and founder oversight in one loop.**
+  
+  [![Next.js](https://img.shields.io/badge/Next.js-15.5.3-black?style=flat-square&logo=next.js)](https://nextjs.org/)
+  [![React](https://img.shields.io/badge/React-18-blue?style=flat-square&logo=react)](https://react.dev/)
+  [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+  [![Convex](https://img.shields.io/badge/Convex-1.27-FF7A00?style=flat-square)](https://convex.dev/)
+  [![Vapi](https://img.shields.io/badge/Vapi-Voice%20AI-8F4BF7?style=flat-square)](https://vapi.ai/)
+  [![OpenAI](https://img.shields.io/badge/OpenAI-GPT--OSS%20120b-10A37F?style=flat-square&logo=openai&logoColor=white)](https://openai.com/)
+  [![Firecrawl](https://img.shields.io/badge/Firecrawl-Web%20Research-F97316?style=flat-square)](https://www.firecrawl.dev/)
+  [![Inkeep](https://img.shields.io/badge/Inkeep-Agentic%20Knowledge-111827?style=flat-square)](https://inkeep.com/)
+  [![Autumn](https://img.shields.io/badge/Autumn-Metering-0EA5E9?style=flat-square)](https://www.useautumn.com/)
+  [![Resend](https://img.shields.io/badge/Resend-Emails-6366F1?style=flat-square)](https://resend.com/)
+</div>
+
 Dial0 is an agentic voice operations platform that researches a request, orchestrates an outbound phone call with cloned voices, and streams transcripts, status, and reports back to founders in real time.
+
+Start a call from the dashboard, watch transcripts and monitor URLs update live, and ship the end-of-call report directly into your workflows.
 
 ## Overview
 
@@ -64,11 +83,38 @@ flowchart TD
 - **Dynamic research loop** Firecrawl + Inkeep enrich issues before dialing to improve first-call resolution.
 - **Founder supervision** Components like `components/chat/live-call-transcript.tsx` stream monitoring links, recordings, and summaries in real time.
 
-## Tech stack
-- **Frontend** Next.js App Router, React 18, TypeScript, Tailwind, Radix UI, `sonner` toasts.
-- **Backend** Convex queries, mutations, and actions for stateful orchestration.
-- **Voice + AI** Vapi (Groq GPT-OSS-120b), Deepgram transcription, ElevenLabs voices, Inkeep RAG, Firecrawl web research, Autumn metering, Resend email flows.
-- **Tooling** Bun (recommended), concurrently, Zod validation, Mermaid for diagrams.
+## 🚀 Technology stack
+
+### Frontend
+- **[Next.js 15.5.3](https://nextjs.org/)** – App Router UX with server actions and streaming UI.
+- **[React 18](https://react.dev/)** – Concurrent rendering, hooks-first components.
+- **[TypeScript 5](https://www.typescriptlang.org/)** – End-to-end typed client and server code.
+- **[Tailwind CSS 4.1.9](https://tailwindcss.com/)** – Utility design system for rapid iteration.
+- **[Radix UI](https://www.radix-ui.com/)** – Accessible primitives for dialogs, menus, and overlays.
+- **[Lucide React](https://lucide.dev/)** – Crisp iconography across dashboards and controls.
+- **[Next Themes](https://github.com/pacocoursey/next-themes)** – Dark/light theme management.
+- **[Sonner](https://sonner.emilkowal.ski/)** – High-signal toast notifications during live calls.
+
+### Backend & data
+- **[Convex](https://convex.dev/)** – Real-time database, queries, and mutations powering the agent loop.
+- **[Convex Actions](https://docs.convex.dev/functions/actions)** – Secure server-side bridges into external APIs.
+- **[Better Auth](https://better-auth.com/)** – Session + magic link auth flows (via `@convex-dev/better-auth`).
+- **[Autumn](https://www.useautumn.com/)** – Usage metering and billing hooks for minutes and issues.
+
+### AI, voice, and research
+- **[Vapi](https://vapi.ai/)** – Voice MCP orchestrating outbound calls and tool execution.
+- **[OpenAI / GPT-OSS-120b](https://openai.com/)** – Primary reasoning model served through Groq.
+- **[ElevenLabs](https://elevenlabs.io/)** – Voice cloning and natural speech synthesis (via Vapi integrations).
+- **[Deepgram](https://deepgram.com/)** – Streaming transcription for live call monitoring.
+- **[Inkeep](https://inkeep.com/)** – Structured knowledge retrieval for call context and answers.
+- **[Firecrawl](https://www.firecrawl.dev/)** – Web research enrichment before dialing.
+
+### Communications & tooling
+- **[Resend](https://resend.com/)** – Transactional email for auth, alerts, and call summaries.
+- **[Bun](https://bun.sh/)** – Dev/runtime tooling (install, scripts, server).
+- **[concurrently](https://github.com/open-cli-tools/concurrently)** – Parallel Next.js + Convex dev servers.
+- **[Zod](https://zod.dev/)** – Input validation for API routes and prompts.
+- **[Mermaid](https://mermaid.js.org/)** – Diagramming for architecture visualizations.
 
 ## Key directories
 - `app/` Next.js routes, including `/api/chat` SSE proxy and `/api/vapi/start-call` dial orchestration.
