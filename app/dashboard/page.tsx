@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { IssuesSidebar } from "@/components/issues-sidebar";
 import { ChatInterface } from "@/components/chat-interface";
 import { Homepage } from "@/components/homepage";
+import { DemoIssueDashboard } from "@/components/demo-issue-dashboard";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, Authenticated, Unauthenticated, AuthLoading } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -89,6 +90,7 @@ function DashboardContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const selectedIssue = issues.find((issue) => issue.id === selectedIssueId)
+  const isDemoIssue = selectedIssueId?.startsWith("demo-")
 
   useEffect(() => {
     const issueIdParam = searchParams.get("issueId")
@@ -187,12 +189,18 @@ function DashboardContent() {
           onSelectIssue={handleSelectIssue}
           onGoHome={goHome}
           onCloseSidebar={() => setSidebarOpen(false)}
+          onCreateIssue={createNewIssue}
         />
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <div className={cn("flex-1 animate-fade-in-up overflow-hidden", selectedIssue ? "pt-16 lg:pt-0" : "pt-0 flex items-center justify-center") }>
-          {selectedIssue ? (
+        <div className={cn("flex-1 animate-fade-in-up overflow-hidden", (selectedIssue || isDemoIssue) ? "pt-16 lg:pt-0" : "pt-0 flex items-center justify-center") }>
+          {isDemoIssue ? (
+            <DemoIssueDashboard 
+              issueId={selectedIssueId!}
+              onOpenMenu={() => setSidebarOpen(true)}
+            />
+          ) : selectedIssue ? (
             <ChatInterface
               issue={selectedIssue}
               onUpdateIssue={updateIssue}

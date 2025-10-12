@@ -168,6 +168,17 @@ export const updateIssueChatId = mutation({
 	},
 });
 
+export const updateIssueAgent = mutation({
+	args: { id: v.id("issues"), currentAgent: v.string() },
+	handler: async (ctx, { id, currentAgent }) => {
+		const userId = await requireUserId(ctx);
+		const existing = await ctx.db.get(id);
+		if (!existing || existing.userId !== userId) throw new Error("Issue not found");
+		await ctx.db.patch(id, { currentAgent });
+		return { id, currentAgent };
+	},
+});
+
 export const listIssuesWithMeta = query({
 	args: {},
 	handler: async (ctx) => {
@@ -996,3 +1007,81 @@ async function syncBetterAuthProfile(ctx: any, args: any) {
 		console.warn("Better Auth profile sync failed", e);
 	}
 }
+
+// Tool Calls - persist agent tool activity
+export const createToolCall = mutation({
+	args: {
+		issueId: v.string(),
+		toolCallId: v.string(),
+		name: v.string(),
+		arguments: v.any(),
+		turnNumber: v.optional(v.number()),
+		agentType: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		// Check if this tool call already exists (deduplication)
+		const existing = await ctx.db
+			.query("toolCalls")
+			.withIndex("by_toolCallId", (q) => q.eq("toolCallId", args.toolCallId))
+			.first();
+		
+		if (existing) {
+			console.log(`Tool call ${args.toolCallId} already exists, skipping creation`);
+			return existing._id;
+		}
+		
+		const now = new Date().toISOString();
+		return await ctx.db.insert("toolCalls", {
+			issueId: args.issueId,
+			toolCallId: args.toolCallId,
+			name: args.name,
+			arguments: args.arguments,
+			createdAt: now,
+			turnNumber: args.turnNumber,
+			agentType: args.agentType,
+		});
+	},
+});
+
+export const updateToolCallResult = mutation({
+	args: {
+		toolCallId: v.string(),
+		result: v.optional(v.any()),
+		error: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		const now = new Date().toISOString();
+		const existing = await ctx.db
+			.query("toolCalls")
+			.withIndex("by_toolCallId", (q) => q.eq("toolCallId", args.toolCallId))
+			.first();
+		
+		if (!existing) {
+			console.warn(`Tool call ${args.toolCallId} not found for result update`);
+			return;
+		}
+		
+		// Only update if not already completed (avoid overwriting results)
+		if (existing.completedAt) {
+			console.log(`Tool call ${args.toolCallId} already completed, skipping update`);
+			return;
+		}
+		
+		await ctx.db.patch(existing._id, {
+			result: args.result,
+			error: args.error,
+			completedAt: now,
+		});
+	},
+});
+
+export const listToolCalls = query({
+	args: { issueId: v.string() },
+	handler: async (ctx, { issueId }) => {
+		return await ctx.db
+			.query("toolCalls")
+			.withIndex("by_issue_createdAt", (q) => q.eq("issueId", issueId))
+			.order("asc")
+			.collect();
+	},
+});

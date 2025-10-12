@@ -65,14 +65,19 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    console.log('[VAPI webhook] Event received:', { type, issueId, callId, hasToken: !!token })
+    
     if (type === 'call.started' || type === 'status-update' && (event?.status === 'started' || event?.status === 'in-progress')) {
+      console.log('[VAPI webhook] Call started event')
       await appendEvent({ type: 'lifecycle', status: 'started' })
       await appendChat('📞 Call started.')
     } else if (type === 'call.ended' || (type === 'status-update' && event?.status === 'ended')) {
+      console.log('[VAPI webhook] Call ended event')
       await appendEvent({ type: 'lifecycle', status: 'ended' })
       await appendChat('📞 Call ended. Generating final report…')
     } else if (type === 'call.update' || type === 'status-update') {
       const status = event?.status || 'in progress'
+      console.log('[VAPI webhook] Status update:', status)
       await appendEvent({ type: 'status', status })
     } else if (
       type === 'transcript' ||
@@ -83,8 +88,10 @@ export async function POST(req: NextRequest) {
       // Handle live transcript updates
       const role = (event?.role || event?.speaker || event?.from || '').toString()
       const text: string | undefined = event?.text || event?.delta || event?.message || event?.transcript
+      console.log('[VAPI webhook] Transcript event:', { role, textLength: text?.length, type })
       if (text && text.trim()) {
         await appendEvent({ type: 'transcript', role, content: text })
+        console.log('[VAPI webhook] Transcript saved to database')
       }
     } else if (type === 'end-of-call-report') {
       // Final summary with messages/transcript and recording metadata

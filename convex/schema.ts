@@ -9,6 +9,7 @@ export default defineSchema({
 		status: v.union(v.literal("open"), v.literal("in-progress"), v.literal("resolved")),
 		createdAt: v.string(), // ISO timestamp
 		chatId: v.optional(v.string()), // Agent conversationId (keeping field name for compatibility)
+		currentAgent: v.optional(v.string()), // Current agent handling this issue (router, support, financial, etc.)
 	})
 		.index("by_createdAt", ["createdAt"]) // legacy / wide queries (optional retain)
 		.index("by_userId_createdAt", ["userId", "createdAt"]),
@@ -68,5 +69,21 @@ export default defineSchema({
 		.index("by_issue", ["issueId"]) 
 		.index("by_call", ["callId"])
 		.index("by_userId_createdAt", ["userId", "createdAt"]),
+	// Tool calls from the orchestrator agent
+	toolCalls: defineTable({
+		issueId: v.string(),
+		toolCallId: v.string(), // Unique ID for this tool call
+		name: v.string(), // Tool name (e.g., 'firecrawl_search', 'start_call')
+		arguments: v.any(), // Tool arguments
+		result: v.optional(v.any()), // Tool result (if completed)
+		error: v.optional(v.string()), // Error message (if failed)
+		createdAt: v.string(), // ISO timestamp
+		completedAt: v.optional(v.string()), // ISO timestamp when result/error set
+		turnNumber: v.optional(v.number()), // Track which conversation turn this tool call belongs to
+		agentType: v.optional(v.string()), // Which agent executed this tool call (router, financial, etc.)
+	})
+		.index("by_issue_createdAt", ["issueId", "createdAt"])
+		.index("by_issue", ["issueId"])
+		.index("by_toolCallId", ["toolCallId"]), // For deduplication and updates
 });
 

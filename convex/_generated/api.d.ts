@@ -12,7 +12,9 @@ import type * as actions_autumn from "../actions/autumn.js";
 import type * as actions_voiceCloning from "../actions/voiceCloning.js";
 import type * as auth from "../auth.js";
 import type * as autumn from "../autumn.js";
+import type * as companyDashboard from "../companyDashboard.js";
 import type * as http from "../http.js";
+import type * as mockCompanyData from "../mockCompanyData.js";
 import type * as orchestration from "../orchestration.js";
 
 import type {
@@ -34,7 +36,9 @@ declare const fullApi: ApiFromModules<{
   "actions/voiceCloning": typeof actions_voiceCloning;
   auth: typeof auth;
   autumn: typeof autumn;
+  companyDashboard: typeof companyDashboard;
   http: typeof http;
+  mockCompanyData: typeof mockCompanyData;
   orchestration: typeof orchestration;
 }>;
 declare const fullApiWithMounts: typeof fullApi;

@@ -13,7 +13,7 @@ export default function LayoutUserButton() {
 
   return (
     <div className="fixed right-2 top-2 z-50 flex items-center gap-2">
-      <UserButton className="h-8 w-8" />
+      {/* <UserButton className="h-8 w-8" /> */}
     </div>
   )
 }

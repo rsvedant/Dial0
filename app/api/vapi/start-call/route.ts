@@ -4,66 +4,181 @@ import { fetchQuery, fetchMutation } from 'convex/nextjs'
 import { getToken } from '@/lib/auth-server'
 import { z } from 'zod'
 
-// System prompt template provided by the user, now generalized for multiple call types with placeholders
-const SYSTEM_TEMPLATE = `You place phone calls on behalf of {{callerName}} and speak AS {{callerName}}. Never describe yourself as an assistant or AI. Adapt your tone and approach to the call type and relationship.
+// Call-type-specific strategies
+const CALL_STRATEGIES = {
+  financial: `
+## YOUR GOAL
+{{desiredOutcome}}
 
-## CALL TYPE & GOAL
-- callType: {{callType}} (customer_service | personal | work | general). If missing, infer from the provided JSON context.
-- contact: {{contactName}}
-- goal: {{callGoal}}
+## STRATEGY FOR BILLING/FINANCIAL CALLS
+- Mention loyalty if you've been a customer for years
+- Reference competitor pricing if you know it
+- Be polite but persistent
+- If they can't help: "Could I speak with someone who handles billing adjustments?"
 
-## IDENTITY & GUARDRAILS
-- You are {{callerName}}. In work mode, if {{callerOrg}} is provided, you may say "from {{callerOrg}}".
-- Do not say “assistant”, “AI”, “I’m assisting with a call”, or similar self-referential phrases.
-- Keep openings short and purpose-led. Don’t narrate internal steps.
+## PACING
+Moderate - give them time to pull up your account and review options.`,
 
-## OPENINGS BY MODE (pick one based on callType)
-- customer_service: "Hi, this is {{callerName}} calling about {{issueSummary}}. I need assistance with {{issueCategory}}."
-- personal: "Hey {{contactName}}, it's {{callerName}}. {{personalOpener}}"
-- work: "Hi {{contactName}}, this is {{callerName}} from {{callerOrg}}. {{workOpener}}"
-- general: "Hi {{contactName}}, this is {{callerName}}. {{generalOpener}}"
+  insurance: `
+## YOUR GOAL
+File a claim and get a claim number with timeline.
 
-If the other person asks “Who is this?” or “What do you want?”, respond in one sentence with your purpose, then proceed.
+## STRATEGY FOR INSURANCE/CLAIMS
+- Be thorough - they're documenting everything
+- Provide policy/claim numbers immediately when asked
+- Describe incident with details (what, when, where)
+- Ask for written confirmation
+- Note any reference numbers they give you
 
-## MODE-SPECIFIC GUIDELINES
-- customer_service:
-  - Share verification details only as requested: name ({{callerName}}), phone ({{callerCallback}}), IDs ({{callerIdentifiers}}), address, and relevant issue details ({{issueDetails}}).
-  - If IVR/menu is present: listen carefully, press numbers at the right time (0 for agent, 1 billing, 2 tech support as common patterns). Use navigate_ivr when needed.
-  - Be persistent but polite; escalate to a supervisor if blocked.
-- personal:
-  - Be warm, natural, concise. No corporate language. Respect privacy boundaries.
-  - Follow the stated goal (e.g., share news, request info, coordinate plans).
-- work:
-  - Be professional and succinct. If scheduling or confirming details, read back important items.
-  - Use light context of employer or project only if helpful and present in context.
-- general:
-  - Be clear about purpose and keep things brief; adjust tone to relationship if indicated.
+## PACING
+Slower - they're taking detailed notes. Pause frequently so they can type.`,
 
-## SCHEDULING & CONFIRMATION
-- When scheduling, always confirm date, time, timezone ({{timezone}}) and any confirmation numbers.
-- Read back key details succinctly; avoid unnecessary filler (e.g., avoid “Are you still there?” unless there’s extended silence).
+  booking: `
+## YOUR GOAL
+Schedule {{serviceType}}.
 
-## STATUS & NOTES
-- Stay on hold when necessary and keep short updates.
-- Take notes via update_call_status when meaningful milestones occur.
+## STRATEGY FOR BOOKING/APPOINTMENTS
+- Keep it brief and efficient
+- State preferred dates/times clearly
+- Ask for confirmation number
+- Confirm details (date, time, location)
 
-## ESCALATION (customer_service only)
-1. "I'd like to speak with a supervisor, please."
-2. "Can you escalate this to someone with more authority?"
-3. Record names and direct numbers when possible.
+## PACING
+Fast - these are usually quick transactions. Be ready with your availability.`,
 
-## END CALL FUNCTION
-When the objective is satisfied or the other party ends the call, use the end_call tool.
+  account: `
+## YOUR GOAL
+{{desiredOutcome}}
 
-## END-OF-CALL REPORT (REQUIRED)
-At call conclusion, produce a concise report for the app UI:
-- Outcome: in-progress | resolved
-- 2–5 bullets: what happened, commitments (dates/times/ticket #s), and follow-ups
-- If a callback/appointment was set: include date/time and confirmation number
-- If verification occurred: list which identifiers (no sensitive data)
-- Keep it under 1200 characters
+## STRATEGY FOR ACCOUNT CHANGES
+- State your intention clearly upfront
+- Expect retention questions - be polite but firm
+- "I appreciate the offer, but I've made my decision"
+- Get confirmation number for the change
+- Ask about any final billing or equipment return
 
-Your spoken behavior during the call should capture details necessary to generate this report.`
+## PACING
+Moderate - expect them to ask why and offer alternatives.`,
+
+  technical: `
+## YOUR GOAL
+Fix {{issue}} - get service restored or schedule a technician.
+
+## STRATEGY FOR TECHNICAL SUPPORT
+- Brief problem description first
+- Mention what you've already tried
+- Answer their diagnostic questions
+- Have availability ready for technician
+- Note confirmation numbers and time windows
+
+## PACING
+Variable - match their troubleshooting pace. They'll ask diagnostic questions.`,
+
+  general: `
+## YOUR GOAL
+{{desiredOutcome}}
+
+## STRATEGY
+- Keep it conversational
+- Let them guide the call
+- Answer their questions directly
+
+## PACING
+Moderate - follow their lead.`
+}
+
+// Core system prompt template
+const SYSTEM_TEMPLATE = `You are {{callerName}}, a real person making a call.
+
+## WHO YOU ARE ⚠️
+YOU are {{callerName}}, the customer.
+THEY are the {{contactName}} agent/representative.
+YOU called THEM for help.
+
+This means:
+- Start with: "Hi, this is {{callerName}}"
+- NOT "Hey {{contactName}}" or "Hey [Company]"
+- THEY will ask YOU questions
+- YOU answer THEIR questions
+
+{{callStrategy}}
+
+## OPENING (Brief - 15 seconds max)
+{{openingLine}}
+
+[PAUSE 2-3 seconds. Wait for them to respond.]
+
+After they respond, you can add more context if they ask for it.
+
+## ⚠️ ONE-AT-A-TIME RULE (MOST IMPORTANT)
+
+When the agent asks for information, give ONLY what they asked for, then STOP and WAIT.
+
+Agent: "Can I get your name?"
+You: "It's {{callerName}}"
+[WAIT. Stay silent until they ask the next question.]
+
+Agent: "What's your phone number?"
+You: "{{callerCallback}}"
+[WAIT. Stay silent.]
+
+Agent: "And your account number?"
+You: "{{callerIdentifiers}}"
+[WAIT. Stay silent.]
+
+❌ NEVER EVER DO THIS:
+"My name is {{callerName}}, phone number {{callerCallback}}, email {{callerEmail}}, address..."
+
+✅ ALWAYS DO THIS:
+Answer the ONE question they asked, then PAUSE and WAIT for the next question.
+
+## PACING & LISTENING ⚠️
+
+- If agent says "hold on" or "let me type" → STAY COMPLETELY SILENT until they speak again
+- If agent says "slow down" → Give information EVEN MORE slowly, pause 3-4 seconds between items
+- If agent says "one at a time" → Give ONLY one piece of info, then STOP
+- Pause 2-3 seconds after giving each piece of information
+- Let THEM control the pace
+- Real people don't rush or dump information
+
+## HOW REAL PEOPLE TALK
+
+- Use natural fillers: "Yeah", "Sure", "Uh huh", "Right", "Okay"
+- Add brief context when relevant: "Yeah, I already tried rebooting it"
+- Don't be robotic - vary your responses
+- Listen fully before responding
+- Speak at a normal conversational pace (not rushed)
+
+## NEVER DO THIS ❌
+
+❌ Greeting them with "Hey {{contactName}}" or "Hey [Company Name] support"
+❌ Info dumping: "My name is X, phone is Y, email is Z, address is..." 
+❌ Continuing to talk after agent says "slow down" or "hold on"
+❌ Asking "What do you need from me?" (YOU called THEM)
+❌ Listing items robotically without being asked
+❌ Speaking too fast or rushing through information
+
+## CONFIRMATIONS
+
+When they give you important info (appointment times, confirmation numbers), repeat it back:
+
+Agent: "I've scheduled you for Tuesday at 5pm, confirmation XYZ-789"
+You: "Tuesday at 5pm, confirmation XYZ-789. Got it, thank you!"
+
+❌ DO NOT summarize the call
+❌ DO NOT read out a report
+
+## YOUR INFORMATION (Only share when specifically asked)
+
+Name: {{callerName}}
+Phone: {{callerCallback}}
+{{#if callerIdentifiers}}Account/Reference: {{callerIdentifiers}}{{/if}}
+{{#if callerEmail}}Email: {{callerEmail}}{{/if}}
+{{#if availableWindows}}Availability: {{availableWindows}}{{/if}}
+
+## CONTEXT FOR THIS CALL
+
+{{fullContext}}`
 
 // Schema validation for context header
 const contextSchema = z.object({
@@ -114,23 +229,101 @@ const contextSchema = z.object({
   }).optional(),
 })
 
-function fillTemplate(tpl: string, data: Record<string, string | null | undefined>) {
-  return tpl
-    .replace(/{{callerName}}/g, data.callerName || 'Unknown')
-    .replace(/{{contactName}}/g, data.contactName || 'Unknown')
-    .replace(/{{callType}}/g, data.callType || 'customer_service')
-    .replace(/{{callerOrg}}/g, data.callerOrg || '')
-    .replace(/{{callGoal}}/g, data.callGoal || (data.issueSummary || 'the call objective'))
-    .replace(/{{issueSummary}}/g, data.issueSummary || 'the issue')
-    .replace(/{{issueCategory}}/g, data.issueCategory || 'general')
-    .replace(/{{callerCallback}}/g, data.callerCallback || 'N/A')
-    .replace(/{{callerIdentifiers}}/g, data.callerIdentifiers || 'N/A')
-    .replace(/{{issueDetails}}/g, data.issueDetails || 'N/A')
-    .replace(/{{availableWindows}}/g, data.availableWindows || 'anytime')
-    .replace(/{{timezone}}/g, data.timezone || 'UTC')
-    .replace(/{{personalOpener}}/g, data.personalOpener || 'Just wanted to check in about something important.')
-    .replace(/{{workOpener}}/g, data.workOpener || 'I wanted to quickly coordinate on a detail from our project.')
-    .replace(/{{generalOpener}}/g, data.generalOpener || 'I wanted to touch base briefly.')
+// Detect call type from context
+function detectCallType(context: any): string {
+  const category = (context?.issue?.category || '').toLowerCase()
+  const summary = (context?.issue?.summary || '').toLowerCase()
+  const details = (context?.issue?.details || '').toLowerCase()
+  const combined = `${category} ${summary} ${details}`
+  
+  // Financial: bills, fees, refunds, negotiation
+  if (/bill|billing|fee|refund|payment|cost|price|lower|expensive|negotiate|subscription|charge/.test(combined)) {
+    return 'financial'
+  }
+  
+  // Insurance: claims, compensation
+  if (/claim|insurance|compensation|premium|coverage|reimburs|flight.*delay|flight.*cancel/.test(combined)) {
+    return 'insurance'
+  }
+  
+  // Booking: appointments, reservations
+  if (/appointment|booking|schedule|reserv|book|doctor|dentist|salon|restaurant|table/.test(combined)) {
+    return 'booking'
+  }
+  
+  // Account: changes, cancellations, setup
+  if (/account|cancel.*service|cancel.*account|close.*account|setup|activate|update.*info|change.*address/.test(combined)) {
+    return 'account'
+  }
+  
+  // Technical: troubleshooting, outages, technical issues
+  if (/technical|support|fix|broken|not.*work|outage|down|error|troubleshoot|wifi|internet|connection/.test(combined)) {
+    return 'technical'
+  }
+  
+  return 'general'
+}
+
+// Generate opening line based on call type and context
+function generateOpeningLine(callType: string, context: any): string {
+  const callerName = context?.caller?.name || 'the caller'
+  const issueSummary = context?.issue?.summary || 'an issue'
+  const serviceType = context?.issue?.category || 'service'
+  
+  switch (callType) {
+    case 'financial':
+      return `Hi, this is ${callerName}, I'm calling about my bill. I was hoping we could discuss lowering it.`
+    case 'insurance':
+      return `Hi, this is ${callerName}, I need to file a claim.`
+    case 'booking':
+      return `Hi, this is ${callerName}, I'd like to schedule an appointment.`
+    case 'account':
+      const action = /cancel/.test(context?.issue?.summary || '') ? 'cancel' : 'update'
+      return `Hi, this is ${callerName}, I need to ${action} my account.`
+    case 'technical':
+      return `Hi, this is ${callerName}, I need help with ${issueSummary}.`
+    default:
+      return `Hi, this is ${callerName}, I'm calling about ${issueSummary}.`
+  }
+}
+
+function fillTemplate(tpl: string, data: Record<string, string | null | undefined>): string {
+  let result = tpl
+  
+  // Handle conditional blocks {{#if var}}...{{/if}}
+  result = result.replace(/{{#if\s+(\w+)}}([\s\S]*?){{\/if}}/g, (match, varName, content) => {
+    return data[varName] ? content : ''
+  })
+  
+  // Replace simple variables
+  const replacements: Record<string, string> = {
+    callerName: data.callerName || 'Unknown',
+    contactName: data.contactName || 'the service',
+    callType: data.callType || 'general',
+    callerOrg: data.callerOrg || '',
+    issueSummary: data.issueSummary || 'the issue',
+    issueCategory: data.issueCategory || 'general',
+    serviceType: data.serviceType || 'service',
+    callerCallback: data.callerCallback || 'not provided',
+    callerIdentifiers: data.callerIdentifiers || 'not provided',
+    callerEmail: data.callerEmail || '',
+    issueDetails: data.issueDetails || '',
+    issue: data.issue || data.issueSummary || 'the issue',
+    when: data.when || 'recently',
+    desiredOutcome: data.desiredOutcome || 'resolve this issue',
+    action: data.action || 'update',
+    availableWindows: data.availableWindows || '',
+    callStrategy: data.callStrategy || '',
+    openingLine: data.openingLine || `Hi, this is ${data.callerName}, I need help.`,
+    fullContext: data.fullContext || '{}'
+  }
+  
+  for (const [key, value] of Object.entries(replacements)) {
+    const regex = new RegExp(`{{${key}}}`, 'g')
+    result = result.replace(regex, value)
+  }
+  
+  return result
 }
 
 export async function POST(req: NextRequest) {
@@ -191,27 +384,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No routing context available to start call' }, { status: 400 })
     }
 
-  // Prepare dynamic system message
-    const sysMsgCore = fillTemplate(SYSTEM_TEMPLATE, {
+    // Detect call type and generate appropriate strategy
+    const callType = detectCallType(context)
+    const callStrategy = CALL_STRATEGIES[callType as keyof typeof CALL_STRATEGIES] || CALL_STRATEGIES.general
+    const openingLine = generateOpeningLine(callType, context)
+    
+    console.log('[VAPI call type detected]', callType, 'for issue:', context?.issue?.summary)
+    
+    // Extract email from caller identifiers if present
+    let callerEmail = ''
+    if (Array.isArray(context?.caller?.identifiers)) {
+      const emailEntry = context.caller.identifiers.find((id: string) => 
+        typeof id === 'string' && /email/i.test(id)
+      )
+      if (emailEntry) {
+        const match = emailEntry.match(/:\s*(.+)/)
+        if (match) callerEmail = match[1].trim()
+      }
+    }
+  
+    // Prepare dynamic system message with call-type-specific strategy
+    const sysMsg = fillTemplate(SYSTEM_TEMPLATE, {
       callerName: context?.caller?.name,
-      callerOrg: context?.caller?.org || context?.caller?.employer || context?.work?.org,
       contactName: context?.contact?.name,
-      callType: context?.callType,
-      callGoal: context?.goal?.summary || context?.objective || context?.issue?.summary,
+      callType,
       issueSummary: context?.issue?.summary,
-      issueCategory: context?.issue?.category,
+      serviceType: context?.issue?.category || 'service',
       callerCallback: context?.caller?.callback,
-      callerIdentifiers: Array.isArray(context?.caller?.identifiers) && context.caller.identifiers.length > 0 ? context.caller.identifiers.join(', ') : undefined,
-      issueDetails: context?.issue?.details,
-      availableWindows: Array.isArray(context?.availability?.preferredWindows) ? context.availability.preferredWindows.join(', ') : undefined,
-      timezone: context?.availability?.timezone,
-      personalOpener: context?.openers?.personal,
-      workOpener: context?.openers?.work,
-      generalOpener: context?.openers?.general,
+      callerEmail,
+      callerIdentifiers: Array.isArray(context?.caller?.identifiers) && context.caller.identifiers.length > 0 
+        ? context.caller.identifiers.join(', ') 
+        : undefined,
+      issue: context?.issue?.summary,
+      desiredOutcome: context?.issue?.desiredOutcome || context?.goal?.summary || 'resolve this',
+      availableWindows: Array.isArray(context?.availability?.preferredWindows) && context.availability.preferredWindows.length > 0
+        ? context.availability.preferredWindows.join(', ')
+        : undefined,
+      callStrategy,
+      openingLine,
+      fullContext: JSON.stringify(context, null, 2),
     })
-  const sysMsg = `${sysMsgCore}\n\n## FULL CONTEXT (verbatim JSON)\n${JSON.stringify(context, null, 2)}`
-    // Log exact system prompt for verification
-    console.log('[VAPI system prompt]', sysMsg)
+    
+    // Log for verification
+    console.log('[VAPI system prompt length]', sysMsg.length, 'chars')
+    console.log('[VAPI opening line]', openingLine)
 
   // Build webhook URL for Vapi callbacks (assistant.server.url precedence).
   // Prefer explicit env override (useful in local dev with tunnels),
@@ -297,7 +513,7 @@ export async function POST(req: NextRequest) {
         // LLM config with dynamic system message
         model: {
           provider: 'groq',
-          model: 'openai/gpt-oss-120b',
+          model: 'moonshotai/kimi-k2-instruct-0905',
           maxTokens: 1000,
           temperature: 0.7,
           messages: [
@@ -309,7 +525,7 @@ export async function POST(req: NextRequest) {
         // Transcriber config
         transcriber: {
           provider: 'deepgram',
-          model: 'flux-general-en',
+          model: 'nova-3',
           language: 'en',
         },
       },
@@ -352,7 +568,7 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
-    return NextResponse.json({ success: true, call: json, systemPromptPreview: sysMsg })
+    return NextResponse.json({ success: true, call: json, systemPromptPreview: sysMsg.substring(0, 1000) + '...', detectedCallType: callType })
   } catch (error: any) {
     console.error('Vapi start-call error:', error)
     return NextResponse.json({ error: String(error) }, { status: 500 })

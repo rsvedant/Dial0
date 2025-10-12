@@ -48,7 +48,7 @@ export function IssueIcon({ issueId, issueType, size = "md", className }: IssueI
   
   return (
     <div className={cn(
-      "flex items-center justify-center rounded-full bg-primary text-primary-foreground",
+      "flex items-center justify-center rounded-full bg-muted/50 text-muted-foreground",
       size === "sm" && "w-6 h-6",
       size === "md" && "w-8 h-8", 
       size === "lg" && "w-10 h-10",

@@ -231,6 +231,7 @@ export function AccountSettingsPage() {
               onSelectIssue={(id) => { router.push(`/dashboard?issueId=${id}`) }}
               onGoHome={() => router.push("/dashboard")}
               onCloseSidebar={() => setSidebarOpen(false)}
+              onCreateIssue={() => router.push("/dashboard")}
               disableAnimation
             />
           </div>

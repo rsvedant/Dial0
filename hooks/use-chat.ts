@@ -29,8 +29,16 @@ export interface ChatMessage {
   content: string
   sender: 'user' | 'system'
   timestamp: Date
-  type?: 'text' | 'system' | 'transcript' | 'status' | 'info' | 'data-summary' | 'data-operation' | 'data-component' | 'data-artifact'
+  type?: 'text' | 'system' | 'transcript' | 'status' | 'info' | 'data-summary' | 'data-operation' | 'data-component' | 'data-artifact' | 'tool-activity' | 'agent-header'
   data?: any // For data events
+  toolCalls?: Array<{
+    id: string
+    name: string
+    arguments: Record<string, unknown>
+    result?: unknown
+    error?: string
+    timestamp: Date
+  }>
   transcript?: { user: string; system: string }[]
   monitor?: { listenUrl?: string; controlUrl?: string }
   isEnded?: boolean
@@ -45,6 +53,84 @@ export interface ChatMessage {
   finalTranscriptText?: string
   finalSummary?: string
   callOutcome?: CallOutcomeInfo
+}
+
+const STREAM_EVENT_LIMIT = 200
+
+function formatJsonPreview(value: any, maxLength = 160): string {
+  if (value === null || value === undefined) return ''
+
+  let asString: string
+  try {
+    if (typeof value === 'string') {
+      asString = value.trim()
+    } else {
+      asString = JSON.stringify(value)
+    }
+  } catch {
+    asString = String(value)
+  }
+
+  if (!asString) return ''
+  return asString.length > maxLength ? `${asString.slice(0, maxLength)}…` : asString
+}
+
+function createToolEventMessage(evt: any): ChatMessage | null {
+  if (!evt || typeof evt !== 'object') return null
+
+  const timestamp = evt.createdAt ? new Date(evt.createdAt) : new Date()
+  const baseId = evt.__localId ?? `${evt.type}-${timestamp.getTime()}-${Math.random()}`
+
+  if (evt.type === 'tool-call') {
+    const argPreview = evt.arguments ? formatJsonPreview(evt.arguments) : ''
+    const content = `🛠️ Running ${evt.name}${argPreview ? ` → ${argPreview}` : ''}`
+    return {
+      id: baseId,
+      content,
+      sender: 'system',
+      timestamp,
+      type: 'status',
+      data: evt,
+    }
+  }
+
+  if (evt.type === 'tool-result') {
+    const outputPreview = evt.output ? formatJsonPreview(evt.output) : ''
+    const content = `✅ ${evt.name} finished${outputPreview ? ` → ${outputPreview}` : ''}`
+    return {
+      id: baseId,
+      content,
+      sender: 'system',
+      timestamp,
+      type: 'status',
+      data: evt,
+    }
+  }
+
+  if (evt.type === 'status') {
+    // Hide main_agent_start and main_agent_end from UI
+    const statusValue = typeof evt.status === 'string' ? evt.status : ''
+    if (statusValue === 'main_agent_start' || statusValue === 'main_agent_end') {
+      return null
+    }
+
+    const normalized = statusValue.replace(/_/g, ' ').trim()
+    if (!normalized) return null
+
+    const pretty = normalized.charAt(0).toUpperCase() + normalized.slice(1)
+    const content = evt.metadata?.name ? `${pretty} (${evt.metadata.name})` : pretty
+
+    return {
+      id: baseId,
+      content,
+      sender: 'system',
+      timestamp,
+      type: 'status',
+      data: evt,
+    }
+  }
+
+  return null
 }
 
 interface UseChatOptions {
@@ -100,13 +186,24 @@ function parseFinalTranscript(raw: string, baseTime: Date, callKey: string): Tra
 }
 
 export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptions) {
+  console.log('🎣 useChat hook called with issueId:', issueId)
+  
   // Live messages from Convex
   const convexMessages = useQuery(api.orchestration.listMessages, issueId ? { issueId } : "skip") as any[] | undefined
   const callEvents = useQuery(api.orchestration.listCallEvents, issueId ? { issueId } : "skip") as any[] | undefined
+  const convexToolCalls = useQuery(api.orchestration.listToolCalls, issueId ? { issueId } : "skip") as any[] | undefined
   const issue = useQuery(api.orchestration.getIssue, issueId ? { id: issueId as any } : "skip")
   const appendMessage = useMutation(api.orchestration.appendMessage)
   const updateIssueStatus = useMutation(api.orchestration.updateIssueStatus)
   const updateIssueChatId = useMutation(api.orchestration.updateIssueChatId)
+  const createToolCall = useMutation(api.orchestration.createToolCall)
+  const updateToolCallResult = useMutation(api.orchestration.updateToolCallResult)
+  
+  console.log('📡 Convex queries status:', {
+    convexMessages: convexMessages === undefined ? 'loading' : `${convexMessages.length} items`,
+    convexToolCalls: convexToolCalls === undefined ? 'loading' : `${convexToolCalls.length} items`,
+    callEvents: callEvents === undefined ? 'loading' : `${callEvents.length} items`,
+  })
   
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isIssueComplete, setIsIssueComplete] = useState(false)
@@ -116,7 +213,9 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
   // Track loading state and streaming message
   const [aiLoading, setAiLoading] = useState(false)
   const [streamingMessage, setStreamingMessage] = useState<ChatMessage | null>(null)
-  const [streamEvents, setStreamEvents] = useState<any[]>([]) // All stream events for display
+  const [streamEvents, setStreamEvents] = useState<any[]>([]) // For status events only
+  const [currentTurnNumber, setCurrentTurnNumber] = useState<number>(0) // Track conversation turn for grouping
+  const [currentAgent, setCurrentAgent] = useState<string>('router') // Track current active agent
   const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -124,11 +223,39 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
     setIsIssueComplete(false)
     setStreamingMessage(null)
     setStreamEvents([])
+    setCurrentTurnNumber(0)
+    setCurrentAgent('router')
   }, [issueId])
+
+  // Debug: Track convexToolCalls changes
+  useEffect(() => {
+    console.log('🔄 convexToolCalls changed:', {
+      issueId,
+      isUndefined: convexToolCalls === undefined,
+      isArray: Array.isArray(convexToolCalls),
+      length: convexToolCalls?.length,
+      data: convexToolCalls,
+    })
+  }, [convexToolCalls, issueId])
 
   // Project Convex rows to ChatMessage shape and merge with streaming message
   useEffect(() => {
-    if (!convexMessages) return
+    if (!convexMessages) {
+      console.log('⏳ Waiting for convexMessages to load...')
+      return
+    }
+    
+    console.log('🔍 Building messages:', {
+      issueId,
+      convexMessages: convexMessages?.length,
+      convexToolCalls: convexToolCalls?.length,
+      convexToolCallsIsUndefined: convexToolCalls === undefined,
+      convexToolCallsIsArray: Array.isArray(convexToolCalls),
+      toolCallSample: convexToolCalls?.[0],
+      allToolCalls: convexToolCalls,
+    })
+    
+    // PHASE 1: Core messages from Convex
     let mapped: ChatMessage[] = convexMessages.map((row) => ({
       id: row._id,
       content: row.content,
@@ -137,50 +264,67 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
       type: row.role === 'system' ? 'system' : 'text',
     }))
     
-    // Add streaming message if active
+    // PHASE 2: Tool calls from Convex (automatically reactive!)
+    // Just display what's in Convex, period. No complex deduplication logic.
+    const sortedToolCalls = (convexToolCalls ?? [])
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    
+    console.log('🛠️ Sorted tool calls:', sortedToolCalls.length, sortedToolCalls)
+    
+    // Group by turnNumber if available
+    const groupsByTurn = new Map<number | string, Array<{
+      id: string
+      name: string
+      arguments: Record<string, unknown>
+      result?: unknown
+      error?: string
+      timestamp: Date
+    }>>()
+    
+    for (const tc of sortedToolCalls) {
+      const timestamp = new Date(tc.createdAt)
+      const groupKey = tc.turnNumber !== undefined && tc.turnNumber !== null 
+        ? tc.turnNumber 
+        : `time-${Math.floor(timestamp.getTime() / (2 * 60 * 1000))}`
+      
+      if (!groupsByTurn.has(groupKey)) {
+        groupsByTurn.set(groupKey, [])
+      }
+      
+      groupsByTurn.get(groupKey)!.push({
+        id: tc.toolCallId,
+        name: tc.name,
+        arguments: tc.arguments || {},
+        result: tc.result,
+        error: tc.error,
+        timestamp,
+      })
+    }
+    
+    // Create tool activity messages for each group
+    const toolActivityMessages: ChatMessage[] = []
+    for (const [_, toolCalls] of groupsByTurn.entries()) {
+      if (toolCalls.length > 0) {
+        const earliestTimestamp = toolCalls[0].timestamp
+        toolActivityMessages.push({
+          id: `tool-activity-${issueId}-${earliestTimestamp.getTime()}`,
+          content: 'Tool activity',
+          sender: 'system',
+          timestamp: earliestTimestamp,
+          type: 'tool-activity',
+          toolCalls,
+        })
+      }
+    }
+    
+    console.log('📦 Tool activity messages created:', toolActivityMessages.length, toolActivityMessages)
+    
+    mapped = [...mapped, ...toolActivityMessages]
+    
+    // PHASE 3: Add active streaming message if present
     if (streamingMessage) {
       mapped = [...mapped, streamingMessage]
     }
-    
-    // Add stream event messages (data-summary, data-operation, etc.)
-    // Filter out agent_initializing and other noise operations
-    const eventMessages: ChatMessage[] = (streamEvents ?? [])
-      .filter((evt: any) => {
-        if (!['data-summary', 'data-operation', 'data-component', 'data-artifact'].includes(evt.type)) {
-          return false
-        }
-        if (evt.type === 'data-summary') {
-          const label = evt.data?.label || evt.data?.content || evt.content || ''
-          if (/call (?:ended|complete)|generating final report/i.test(label)) {
-            return false
-          }
-          return true
-        }
-        if (evt.type === 'data-operation') {
-          const opType = evt.data?.type
-          if (['agent_initializing', 'agent_ready', 'completion'].includes(opType)) {
-            return false
-          }
-        }
-        return true
-      })
-      .map((evt: any) => ({
-        id: `evt-${Date.now()}-${Math.random()}`,
-        content:
-          evt.type === 'data-summary'
-            ? evt.data?.label || 'Processing...'
-            : evt.type === 'data-operation'
-            ? `🔧 ${evt.data?.type}${evt.data?.ctx?.agent ? ` (${evt.data.ctx.agent})` : ''}`
-            : evt.type === 'data-component'
-            ? `Component: ${evt.data?.type}`
-            : `Artifact: ${evt.data?.artifact_id}`,
-        sender: 'system' as const,
-        timestamp: evt.createdAt ? new Date(evt.createdAt) : new Date(),
-        type: evt.type as any,
-        data: evt.data,
-      }))
-
-    mapped = [...mapped, ...eventMessages]
     
     // Elevate collapsible call bubbles for each call
     let withCallBubbles = mapped
@@ -413,8 +557,12 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
       withCallBubbles = [...nonCallMessages, ...callBubbles]
       withCallBubbles.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
     }
+    
+    // PHASE 4: Final sort by timestamp
+    withCallBubbles.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+    
     setMessages(withCallBubbles)
-  }, [convexMessages, callEvents, issueId, streamingMessage, streamEvents])
+  }, [convexMessages, callEvents, convexToolCalls, issueId, streamingMessage])
 
   // Smoothly keep scroll pinned to bottom when new messages arrive
   useEffect(() => {
@@ -426,6 +574,10 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
 
     setAiLoading(true)
     setStreamEvents([]) // Clear previous stream events
+    
+    // Increment turn number for this conversation turn
+    const turnNumber = currentTurnNumber + 1
+    setCurrentTurnNumber(turnNumber)
 
     // Build full conversation history for the agent request
     const historyMessages = (convexMessages ?? []).map((row) => {
@@ -475,6 +627,38 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
+      const contentType = response.headers.get('Content-Type')?.toLowerCase() ?? ''
+
+      if (!contentType.includes('text/event-stream')) {
+        const rawText = await response.text()
+        let assistantText = ''
+        if (rawText) {
+          try {
+            const parsed = JSON.parse(rawText)
+            assistantText = parsed?.output ?? parsed?.message ?? parsed?.data?.output ?? ''
+            if (!assistantText && typeof parsed === 'string') {
+              assistantText = parsed
+            } else if (!assistantText && typeof parsed === 'object') {
+              assistantText = JSON.stringify(parsed)
+            }
+          } catch (err) {
+            assistantText = rawText
+          }
+        }
+
+        if (assistantText.trim().length > 0) {
+          await appendMessage({
+            issueId,
+            role: 'assistant',
+            content: assistantText,
+          })
+        }
+
+        setStreamingMessage(null)
+        setAiLoading(false)
+        return
+      }
+
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
 
@@ -493,6 +677,8 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
         timestamp: new Date(),
         type: 'text',
       })
+
+      let finalState: any = null
 
       while (true) {
         const { value, done } = await reader.read()
@@ -515,26 +701,49 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
             try {
               const event = JSON.parse(data)
               console.log('📥 SSE Event:', event.type, event)
-              
-              // Store ALL events for display
-              setStreamEvents(prev => [...prev, event])
+
+              const enrichedEvent = {
+                ...event,
+                createdAt: event.createdAt ?? new Date().toISOString(),
+                __localId:
+                  event.__localId ??
+                  (event.id ? `${event.type}-${event.id}` : `${event.type}-${Date.now()}-${Math.random()}`),
+              }
+
+              setStreamEvents(prev => {
+                const next = [...prev, enrichedEvent]
+                if (next.length > STREAM_EVENT_LIMIT) {
+                  next.splice(0, next.length - STREAM_EVENT_LIMIT)
+                }
+                return next
+              })
 
               switch (event.type) {
-                case 'text-start':
+                case 'agent-header': {
+                  // Just track the current agent, no message needed
+                  console.log('🎭 Agent switch:', event.agent, event.displayName)
+                  setCurrentAgent(event.agent || 'router')
+                  break
+                }
+
+                case 'text-start': {
                   currentTextId = event.id
-                  console.log('🔵 Text segment started:', event.id)
-                  // Store conversationId if we don't have one
                   if (event.id && !issue?.chatId) {
                     await updateIssueChatId({ id: issueId as any, chatId: event.id })
-                    console.log('✅ Stored conversationId:', event.id)
                   }
+                  setStreamingMessage({
+                    id: `temp-${Date.now()}`,
+                    content: '',
+                    sender: 'system',
+                    timestamp: new Date(),
+                    type: 'text',
+                  })
                   break
+                }
 
-                case 'text-delta':
-                  if (event.delta) {
-                    // Append to accumulated text
+                case 'text-delta': {
+                  if (typeof event.delta === 'string') {
                     accumulatedText += event.delta
-                    // Update streaming message in real-time by appending to previous content
                     setStreamingMessage(prev => {
                       if (!prev) return null
                       return {
@@ -544,33 +753,69 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
                     })
                   }
                   break
+                }
 
                 case 'text-end':
                   console.log('✅ Text segment ended. Total length:', accumulatedText.length)
                   break
 
-                case 'data-summary':
-                  console.log('🟡 Summary:', event.data?.label)
+                case 'status':
+                  console.log('📣 Status:', event.status)
                   break
 
-                case 'data-operation':
-                  const opType = event.data?.type
-                  if (!['agent_initializing', 'agent_ready'].includes(opType)) {
-                    console.log('🔧 Operation:', opType, event.data?.ctx)
+                case 'tool-call':
+                  console.log('🛠️ Tool call:', event.name, event.arguments)
+                  // Persist tool call to Convex - Convex will handle deduplication
+                  try {
+                    console.log('💾 Attempting to save tool call to Convex:', {
+                      issueId,
+                      toolCallId: event.id,
+                      name: event.name,
+                      turnNumber: currentTurnNumber,
+                      agentType: event.metadata?.agentType,
+                    })
+                    const result = await createToolCall({
+                      issueId,
+                      toolCallId: event.id,
+                      name: event.name,
+                      arguments: event.arguments || {},
+                      turnNumber: currentTurnNumber,
+                      agentType: event.metadata?.agentType,
+                    })
+                    console.log('✅ Tool call saved to Convex successfully:', result)
+                  } catch (err) {
+                    console.error('❌ Failed to persist tool call:', err)
                   }
                   break
 
-                case 'data-component':
-                  console.log('🎨 Component:', event.data?.type, event.data)
+                case 'tool-result':
+                  console.log('🛠️ Tool result:', event.name, event.output)
+                  // Update tool call with result
+                  try {
+                    await updateToolCallResult({
+                      toolCallId: event.id,
+                      result: event.output?.error ? undefined : event.output,
+                      error: event.output?.error ? (typeof event.output.error === 'string' ? event.output.error : JSON.stringify(event.output.error)) : undefined,
+                    })
+                  } catch (err) {
+                    console.error('Failed to update tool call result:', err)
+                  }
                   break
 
-                case 'data-artifact':
-                  console.log('📦 Artifact:', event.data?.artifact_id, event.data)
+                case 'final':
+                  finalState = event.state
+                  if (!accumulatedText && finalState?.messages) {
+                    const lastAssistant = [...(finalState.messages as any[])].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string')
+                    if (lastAssistant) {
+                      accumulatedText = lastAssistant.content
+                    }
+                  }
+                  if (event.state?.status === 'completed') {
+                    setIsIssueComplete(true)
+                  }
                   break
-                  
-                case 'tool-call':
-                case 'tool-result':
-                  console.log('🛠️ MCP Tool:', event.type, event)
+
+                default:
                   break
               }
             } catch (e) {
@@ -581,7 +826,7 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
       }
 
       // Persist final message to Convex
-      if (accumulatedText) {
+      if (accumulatedText.trim().length > 0) {
         await appendMessage({
           issueId,
           role: 'assistant',
@@ -591,6 +836,7 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
 
       setStreamingMessage(null)
       setAiLoading(false)
+      setStreamEvents([]) // Clear stream events - Convex reactivity will show persisted data
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
@@ -606,7 +852,7 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
       setStreamingMessage(null)
       setAiLoading(false)
     }
-  }, [aiLoading, issueId, issue?.chatId, appendMessage, updateIssueStatus, updateIssueChatId, convexMessages])
+  }, [aiLoading, issueId, issue?.chatId, appendMessage, updateIssueStatus, updateIssueChatId, convexMessages, currentTurnNumber, createToolCall, updateToolCallResult])
 
   const resetChat = useCallback(() => {
     setMessages([])
@@ -620,6 +866,7 @@ export function useChat({ issueId, onIssueComplete, knownContext }: UseChatOptio
     sendMessage,
     resetChat,
     streamEvents, // Expose all stream events for advanced UI
+    currentAgent, // Expose current active agent for UI indicator
   }
 }
 

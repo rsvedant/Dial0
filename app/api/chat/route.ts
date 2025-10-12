@@ -1,27 +1,61 @@
 import { NextRequest } from 'next/server'
 import { api } from '@/convex/_generated/api'
-import { fetchQuery } from 'convex/nextjs'
+import { fetchQuery, fetchMutation } from 'convex/nextjs'
 import { getToken } from '@/lib/auth-server'
-
-const AGENT_BASE_URL = process.env.AGENT_BASE_URL!
-const AGENT_API_KEY = process.env.AGENT_API_KEY!
+import { runOrchestrator } from '@/lib/langgraph/orchestrator'
+import type { NormalizedMessage } from '@/lib/langgraph/orchestrator'
+import { randomUUID } from 'crypto'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { messages, issueId, conversationId } = body
+    const { messages, issueId } = body
 
-    if (!AGENT_BASE_URL || !AGENT_API_KEY) {
+    if (!Array.isArray(messages) || messages.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'Agent configuration missing' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'No messages provided' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
       )
     }
 
-    // Fetch user settings from Convex for context headers
+    const allowedRoles: NormalizedMessage['role'][] = ['user', 'assistant', 'system', 'tool']
+    const normalizedMessages: NormalizedMessage[] = messages
+      .filter((msg: any) => msg && typeof msg === 'object' && typeof msg.content === 'string')
+      .map((msg: any) => {
+        const candidateRole = typeof msg.role === 'string' ? msg.role.toLowerCase() : ''
+        const role = (allowedRoles.includes(candidateRole as NormalizedMessage['role'])
+          ? candidateRole
+          : 'user') as NormalizedMessage['role']
+        return {
+          id: typeof msg.id === 'string' ? msg.id : randomUUID(),
+          role,
+          content: msg.content,
+          name: typeof msg.name === 'string' ? msg.name : undefined,
+        }
+      })
+    
+    if (normalizedMessages.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'No valid messages found' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const lastUserMessage = [...normalizedMessages]
+      .reverse()
+      .find((msg) => msg.role === 'user' && typeof msg.content === 'string' && msg.content.trim().length > 0)
+
+    if (!lastUserMessage) {
+      return new Response(
+        JSON.stringify({ error: 'No user message provided' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Fetch user settings and issue data from Convex
     const token = await getToken()
     let settings: any = null
-    let storedChatId: string | null = null
+    let issue: any = null
     
     if (token) {
       try {
@@ -30,94 +64,144 @@ export async function POST(req: NextRequest) {
         console.warn('Failed to fetch settings from Convex:', e)
       }
       
-      // Get stored conversationId from issue if it exists
+      // Fetch issue to get currentAgent
       if (issueId) {
         try {
-          const issue = await fetchQuery(api.orchestration.getIssue, { id: issueId }, { token })
-          storedChatId = issue?.chatId || null
+          issue = await fetchQuery(api.orchestration.getIssue, { id: issueId as any }, { token })
         } catch (e) {
-          console.warn('Failed to fetch issue conversationId:', e)
+          console.warn('Failed to fetch issue from Convex:', e)
         }
       }
     }
-
-    // Build headers as per agent requirements
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+    const incomingRequestContext = typeof body.requestContext === 'object' && body.requestContext !== null ? body.requestContext : {}
+    const baseContext = {
+      name: settings?.firstName && settings?.lastName ? `${settings.firstName} ${settings.lastName}` : '',
+      email: settings?.email ?? '',
+      phone: settings?.phone ?? '',
+      timezone: settings?.timezone ?? '',
+      address: settings?.address ? (typeof settings.address === 'string' ? settings.address : JSON.stringify(settings.address)) : '',
     }
 
-    headers['Authorization'] = `Bearer ${AGENT_API_KEY}`
-
-    // Pass settings as context headers (as per agent docs)
-    if (settings) {
-      if (settings.firstName && settings.lastName) {
-        headers['name'] = settings.firstName + ' ' + settings.lastName
-      }
-      if (settings.email) headers['email'] = settings.email
-      if (settings.phone) headers['phone'] = settings.phone
-      if (settings.timezone) headers['timezone'] = settings.timezone
-      if (settings.address) headers['address'] = JSON.stringify(settings.address)
+    const requestContext = {
+      name: incomingRequestContext.name ?? baseContext.name,
+      email: incomingRequestContext.email ?? baseContext.email,
+      phone: incomingRequestContext.phone ?? baseContext.phone,
+      timezone: incomingRequestContext.timezone ?? baseContext.timezone,
+      address: incomingRequestContext.address ?? baseContext.address,
     }
 
-    // Pass issueId as metadata
-    if (issueId) {
-      headers['issueid'] = issueId
+    const incomingSecrets = typeof body.sharedSecrets === 'object' && body.sharedSecrets !== null ? body.sharedSecrets : {}
+    const sharedSecrets = {
+      issueId: typeof issueId === 'string' ? issueId : (typeof incomingSecrets.issueId === 'string' ? incomingSecrets.issueId : null),
+      authToken: token ?? (typeof incomingSecrets.authToken === 'string' ? incomingSecrets.authToken : null),
+      // CRITICAL: Pass settings so start_call can enrich context
+      settings: settings ? {
+        firstName: settings.firstName,
+        lastName: settings.lastName,
+        phone: settings.phone,
+        email: settings.email,
+        address: settings.address,
+        timezone: settings.timezone,
+        birthdate: settings.birthdate,
+        voiceId: settings.voiceId,
+        selectedVoice: settings.selectedVoice,
+        testModeEnabled: settings.testModeEnabled,
+        testModeNumber: settings.testModeNumber,
+      } : undefined,
     }
 
-    // Pass auth token as a header if available
-    if (token) {
-      headers['authtoken'] = token
-    }
-
-    // Use stored conversationId or the one from request
-    const activeConversationId = storedChatId || conversationId
-
-    console.log('Proxying to agent:', {
-      url: `${AGENT_BASE_URL}/api/chat`,
-      issueId,
-      conversationId: activeConversationId,
-      messageCount: messages?.length ?? 0,
+    console.log('Running LangGraph orchestrator:', {
+      issueId: sharedSecrets.issueId,
+      messageCount: normalizedMessages.length,
       hasSettings: !!settings,
+      settingsFields: settings ? Object.keys(settings).filter(k => settings[k] !== undefined) : [],
+      currentAgent: issue?.currentAgent || 'none',
     })
 
-    // Build request body with full message history and conversationId if available
-    const requestBody: any = { 
-      messages
-    }
-    if (activeConversationId) {
-      requestBody.conversationId = activeConversationId
-    }
-
-    // Forward request to agent
-    const agentResponse = await fetch(`${AGENT_BASE_URL}/api/chat`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestBody),
+    const encoder = new TextEncoder()
+    const orchestrator = runOrchestrator({
+      messages: normalizedMessages,
+      requestContext,
+      sharedSecrets,
+      currentAgent: issue?.currentAgent, // Pass persisted agent from database
     })
 
-    if (!agentResponse.ok) {
-      const errorText = await agentResponse.text()
-      console.error('Agent error:', errorText)
-      return new Response(
-        JSON.stringify({ error: `Agent error: ${errorText}` }),
-        { status: agentResponse.status, headers: { 'Content-Type': 'application/json' } }
-      )
-    }
-
-    console.log('Agent response headers:', {
-      contentType: agentResponse.headers.get('Content-Type'),
-      status: agentResponse.status,
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          // Event buffering for smoother UI updates
+          let eventBuffer: any[] = []
+          let flushTimeout: NodeJS.Timeout | null = null
+          
+          const flushBuffer = () => {
+            if (eventBuffer.length === 0) return
+            
+            // Send all buffered events at once
+            for (const event of eventBuffer) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+            }
+            eventBuffer = []
+            flushTimeout = null
+          }
+          
+          const scheduleFlush = () => {
+            if (flushTimeout) return // Already scheduled
+            flushTimeout = setTimeout(flushBuffer, 16) // ~60fps
+          }
+          
+          for await (const event of orchestrator) {
+            // Handle agent switch - persist to database
+            if (event.type === 'agent-switch' && issueId) {
+              try {
+                await fetchMutation(
+                  api.orchestration.updateIssueAgent,
+                  { id: issueId, currentAgent: event.to },
+                  { token }
+                );
+                console.log(`[Agent Persistence] Updated issue ${issueId} to agent: ${event.to}`);
+              } catch (error) {
+                console.error('[Agent Persistence] Failed to update agent:', error);
+                // Don't throw - continue streaming even if persistence fails
+              }
+            }
+            
+            // Buffer text-delta events for smoother rendering
+            if (event.type === 'text-delta') {
+              eventBuffer.push(event)
+              scheduleFlush()
+            } else {
+              // Flush buffer before sending non-delta events
+              if (eventBuffer.length > 0) {
+                flushBuffer()
+              }
+              // Send important events immediately
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+            }
+          }
+          
+          // Final flush
+          if (eventBuffer.length > 0) {
+            flushBuffer()
+          }
+          
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        } catch (error) {
+          console.error('Orchestrator stream error:', error)
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ type: 'error', error: String(error) })}\n\n`)
+          )
+        } finally {
+          controller.close()
+        }
+      },
     })
 
-    // Stream the response back to the client
-    // This passes through all streaming data including tool calls, thinking, etc.
-    return new Response(agentResponse.body, {
+    return new Response(stream, {
       status: 200,
       headers: {
-        'Content-Type': agentResponse.headers.get('Content-Type') || 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Content-Type-Options': 'nosniff',
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
       },
     })
 

@@ -35,6 +35,7 @@ import { useChat } from "@/hooks/use-chat"
 import { TimelineIndicator } from "@/components/timeline-indicator"
 import { IssueIcon } from "@/components/issue-icon"
 import { LiveCallTranscript } from "@/components/chat/live-call-transcript"
+import { ToolActivityBubble } from "@/components/chat/tool-activity-bubble"
 
 interface ChatInterfaceProps {
   issue: Issue
@@ -48,10 +49,18 @@ interface ExtendedMessage {
   content: string
   sender: 'user' | 'system'
   timestamp: Date
-  type?: "text" | "system" | "transcript" | "status" | "info" | "data-summary" | "data-operation" | "data-component" | "data-artifact"
+  type?: "text" | "system" | "transcript" | "status" | "info" | "data-summary" | "data-operation" | "data-component" | "data-artifact" | "tool-activity"
   transcript?: { user: string; system: string }[]
   isExpanded?: boolean
   data?: any
+  toolCalls?: Array<{
+    id: string
+    name: string
+    arguments: Record<string, unknown>
+    result?: unknown
+    error?: string
+    timestamp: Date
+  }>
 }
 
 const statusConfig = {
@@ -86,6 +95,32 @@ const messageTypeConfig = {
   'data-operation': { icon: Info, bgClass: "bg-gray-50 dark:bg-gray-950/30", borderClass: "border-gray-200 dark:border-gray-800" },
   'data-component': { icon: FileText, bgClass: "bg-indigo-50 dark:bg-indigo-950/30", borderClass: "border-indigo-200 dark:border-indigo-800" },
   'data-artifact': { icon: FileText, bgClass: "bg-emerald-50 dark:bg-emerald-950/30", borderClass: "border-emerald-200 dark:border-emerald-800" },
+  'tool-activity': { icon: Sparkles, bgClass: "bg-purple-50 dark:bg-purple-950/30", borderClass: "border-purple-200 dark:border-purple-800" },
+}
+
+// Agent helper functions
+function getAgentIcon(agent: string): string {
+  const icons: Record<string, string> = {
+    router: '🎯',
+    financial: '💰',
+    insurance: '🛡️',
+    booking: '📅',
+    account: '👤',
+    support: '🎧',
+  }
+  return icons[agent] || '🤖'
+}
+
+function getAgentDisplayName(agent: string): string {
+  const names: Record<string, string> = {
+    router: 'Router',
+    financial: 'Financial',
+    insurance: 'Insurance',
+    booking: 'Booking',
+    account: 'Account',
+    support: 'Support',
+  }
+  return names[agent] || agent.charAt(0).toUpperCase() + agent.slice(1)
 }
 
 export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }: ChatInterfaceProps) {
@@ -113,7 +148,7 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
   }, [issue.id])
 
   // Use the intelligent chat hook
-  const { messages: chatMessages, isLoading, isIssueComplete, sendMessage: sendChatMessage } = useChat({
+  const { messages: chatMessages, isLoading, isIssueComplete, sendMessage: sendChatMessage, currentAgent } = useChat({
     issueId: issue.id,
     knownContext,
     onIssueComplete: (issueDetails) => {
@@ -293,6 +328,15 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
                   <span className="font-mono">#{String(issue.id).slice(0, 5)}</span>
                   <span>•</span>
                   <span>{issue.createdAt.toLocaleDateString()}</span>
+                  {currentAgent && currentAgent !== 'router' && (
+                    <>
+                      <span>•</span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium">
+                        {getAgentIcon(currentAgent)}
+                        {getAgentDisplayName(currentAgent)}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -329,57 +373,65 @@ export function ChatInterface({ issue, onUpdateIssue, onOpenMenu, knownContext }
                 )}
                 style={{ animationDelay: `${index * 0.05}s` }}
               >
-                <div
-                  className={cn(
-                    "rounded-3xl px-6 py-4 transition-all duration-300",
-                    isUser
-                      ? "bg-primary text-primary-foreground liquid-glass-button"
-                      : "liquid-glass-card text-card-foreground",
-                  )}
-                >
-                  {message.type === "transcript" ? (
-                    <LiveCallTranscript
-                      message={message as ChatMessage}
-                      listenUrl={listenUrl}
-                      isActive={listenUrl ? activeListenUrl === listenUrl : false}
-                      onStartLive={startCallAudio}
-                      onStopLive={stopCallAudio}
-                      audioState={{
-                        isPlaying: isCallPlaying,
-                        isConnecting: isCallConnecting,
-                        error: callAudioError,
-                        canPlay: canPlayCallAudio,
-                      }}
-                    />
-                  ) : (
-                    <div className={cn("text-sm", isUser ? "text-white" : undefined)}>
-                      <MarkdownContent
-                        content={message.content}
-                        className={isUser ? "text-white prose-invert" : undefined}
-                      />
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between mt-2">
-                    <p
-                      className={cn(
-                        "text-xs opacity-70 font-medium",
-                        isUser ? "text-primary-foreground" : "text-muted-foreground",
-                      )}
-                    >
-                      {message.timestamp.toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-
-                    {message.type && message.type !== "text" && (
-                      <Badge variant="secondary" className="text-xs px-2 py-0.5 capitalize">
-                        {message.type}
-                      </Badge>
+                {message.type === "tool-activity" ? (
+                  <ToolActivityBubble
+                    toolCalls={message.toolCalls || []}
+                    isProcessing={isLoading && (message.toolCalls || []).some(tc => !tc.result && !tc.error)}
+                    className="w-full max-w-2xl"
+                  />
+                ) : (
+                  <div
+                    className={cn(
+                      "rounded-3xl px-6 py-4 transition-all duration-300",
+                      isUser
+                        ? "bg-primary text-primary-foreground liquid-glass-button"
+                        : "liquid-glass-card text-card-foreground",
                     )}
+                  >
+                    {message.type === "transcript" ? (
+                      <LiveCallTranscript
+                        message={message as ChatMessage}
+                        listenUrl={listenUrl}
+                        isActive={listenUrl ? activeListenUrl === listenUrl : false}
+                        onStartLive={startCallAudio}
+                        onStopLive={stopCallAudio}
+                        audioState={{
+                          isPlaying: isCallPlaying,
+                          isConnecting: isCallConnecting,
+                          error: callAudioError,
+                          canPlay: canPlayCallAudio,
+                        }}
+                      />
+                    ) : (
+                      <div className={cn("text-sm", isUser ? "text-white" : undefined)}>
+                        <MarkdownContent
+                          content={message.content}
+                          className={isUser ? "text-white prose-invert" : undefined}
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between mt-2">
+                      <p
+                        className={cn(
+                          "text-xs opacity-70 font-medium",
+                          isUser ? "text-primary-foreground" : "text-muted-foreground",
+                        )}
+                      >
+                        {message.timestamp.toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+
+                      {message.type && message.type !== "text" && (
+                        <Badge variant="secondary" className="text-xs px-2 py-0.5 capitalize">
+                          {message.type}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )
           })}

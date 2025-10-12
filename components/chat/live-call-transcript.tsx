@@ -185,30 +185,6 @@ export function LiveCallTranscript({
               <span className={cn('h-2 w-2 rounded-full', statusMeta.dot)} />
               {statusMeta.label}
             </div>
-            {callOutcome && (
-              <div
-                className={cn(
-                  'flex flex-col gap-1 rounded-2xl border px-3 py-2 text-xs font-semibold shadow-sm',
-                  callOutcome.status === 'pass'
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200'
-                    : callOutcome.status === 'fail'
-                    ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200'
-                    : 'border-border bg-muted text-foreground'
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex h-2 w-2 rounded-full bg-current" />
-                  <span>{callOutcome.label}</span>
-                </div>
-                {callOutcome.detail && (
-                  <MarkdownContent
-                    content={callOutcome.detail}
-                    variant="compact"
-                    className="text-foreground/80"
-                  />
-                )}
-              </div>
-            )}
             {hasSummary && (
               <div className="space-y-2 text-sm text-foreground">
                 <div className="text-xs font-semibold uppercase tracking-wide">Summary</div>
