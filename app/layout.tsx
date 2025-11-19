@@ -9,6 +9,7 @@ import { Toaster } from '@/components/ui/toaster'
 import { Providers } from './providers'
 import { ConditionalMobileTabbar } from '@/components/conditional-mobile-tabbar'
 import LayoutUserButton from '@/components/layout-user-button'
+import { SettingsBootstrap } from '@/components/settings-bootstrap'
 
 export const metadata: Metadata = {
   title: 'Dial0',
@@ -58,6 +59,8 @@ export default function RootLayout({
           <ConvexClientProvider>
             {/* Top-right auth/user button (Better Auth UI) */}
             <LayoutUserButton />
+            {/* Bootstrap user settings (auto-detect timezone, etc.) */}
+            <SettingsBootstrap />
             <AutumnClientProvider>
               {children}
             </AutumnClientProvider>

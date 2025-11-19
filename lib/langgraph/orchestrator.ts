@@ -21,7 +21,7 @@ import {
   isFirecrawlToolName,
 } from "../firecrawl";
 
-const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+const DEFAULT_MODEL = process.env.OPENAI_MODEL!;
 const DEFAULT_TEMPERATURE = Number(process.env.OPENAI_TEMPERATURE ?? "0.2"); // Low temperature for deterministic tool calling
 
 // Agent categories based on task specialization

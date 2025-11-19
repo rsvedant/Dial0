@@ -2,11 +2,9 @@
 
 import { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { CreditCard, Shield, Settings, User } from "lucide-react"
+import { CreditCard, Shield, User } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useRouter } from "next/navigation"
 import { AccountSettingsEmbed } from "@/components/account-settings-embed"
 import { SecuritySettingsEmbed } from "@/components/security-settings-embed"
 import { BillingEmbed } from "@/components/billing-embed"
@@ -16,7 +14,7 @@ interface SettingsModalProps {
   onClose: () => void
 }
 
-type SettingsSection = "profile" | "billing" | "security" | "agent"
+type SettingsSection = "profile" | "billing" | "security"
 
 const settingsOptions = [
   {
@@ -36,18 +34,11 @@ const settingsOptions = [
     label: "Security",
     icon: Shield,
     description: "Manage security settings"
-  },
-  {
-    id: "agent" as SettingsSection,
-    label: "Agent Settings",
-    icon: Settings,
-    description: "Configure AI agent behavior"
   }
 ]
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("profile")
-  const router = useRouter()
 
   const renderContent = () => {
     switch (activeSection) {
@@ -57,14 +48,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         return <BillingEmbed />
       case "security":
         return <SecuritySettingsEmbed />
-      case "agent":
-        return (
-          <div className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Agent Settings</h3>
-            <p className="text-muted-foreground">Configure AI agent behavior and preferences.</p>
-            {/* Add agent settings content here */}
-          </div>
-        )
       default:
         return null
     }
