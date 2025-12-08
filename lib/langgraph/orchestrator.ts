@@ -24,6 +24,7 @@ import {
 const API_KEY = process.env.OPENAI_API_KEY!;
 const DEFAULT_MODEL = process.env.OPENAI_MODEL!;
 const DEFAULT_TEMPERATURE = Number(process.env.OPENAI_TEMPERATURE ?? "0.2"); // Low temperature for deterministic tool calling
+const BASE_URL = process.env.OPENAI_BASE_URL!;
 
 // Agent categories based on task specialization
 export type AgentType = 
@@ -361,6 +362,7 @@ export interface OrchestratorConfig {
   modelName?: string;
   temperature?: number;
   apiKey?: string;
+  baseURL?: string;
 }
 
 interface NodeContext {
@@ -916,7 +918,7 @@ async function createMainAgentModel(config: Required<OrchestratorConfig>, includ
     const tools = includeTools ? await resolveToolDefinitions() : [];
     const model = new ChatOpenAI({
       configuration: {
-        baseURL: "https://ai.hackclub.com",
+        baseURL: "https://ai.hackclub.com/proxy/v1",
       },
       apiKey: config.apiKey,
       model: config.modelName,
@@ -1790,6 +1792,7 @@ export async function* runOrchestrator(
     modelName: config.modelName ?? DEFAULT_MODEL,
     temperature: config.temperature ?? DEFAULT_TEMPERATURE,
     apiKey: config.apiKey ?? API_KEY,
+    baseURL: config.baseURL ?? BASE_URL,
   };
   
   if (!modelCache.has(specialistKey)) {
