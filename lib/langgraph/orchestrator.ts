@@ -21,6 +21,7 @@ import {
   isFirecrawlToolName,
 } from "../firecrawl";
 
+const API_KEY = process.env.OPENAI_API_KEY!;
 const DEFAULT_MODEL = process.env.OPENAI_MODEL!;
 const DEFAULT_TEMPERATURE = Number(process.env.OPENAI_TEMPERATURE ?? "0.2"); // Low temperature for deterministic tool calling
 
@@ -359,6 +360,7 @@ export type OrchestratorInput = {
 export interface OrchestratorConfig {
   modelName?: string;
   temperature?: number;
+  apiKey?: string;
 }
 
 interface NodeContext {
@@ -916,6 +918,7 @@ async function createMainAgentModel(config: Required<OrchestratorConfig>, includ
       configuration: {
         baseURL: "https://ai.hackclub.com",
       },
+      apiKey: config.apiKey,
       model: config.modelName,
       temperature: config.temperature,
     });
@@ -1786,6 +1789,7 @@ export async function* runOrchestrator(
   const fullConfig = {
     modelName: config.modelName ?? DEFAULT_MODEL,
     temperature: config.temperature ?? DEFAULT_TEMPERATURE,
+    apiKey: config.apiKey ?? API_KEY,
   };
   
   if (!modelCache.has(specialistKey)) {
